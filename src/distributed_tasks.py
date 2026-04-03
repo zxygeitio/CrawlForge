@@ -86,10 +86,14 @@ class CrawlerCelery:
             worker_max_tasks_per_child=100,  # 每100个任务重启worker
         )
 
-    def register_task(self, func: Callable = None, **kwargs):
-        """注册爬虫任务"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._crawl_task = self._create_crawl_task()
 
-        @self.celery.task(bind=True, **kwargs)
+    def _create_crawl_task(self):
+        """创建爬虫任务（在初始化时注册一次）"""
+
+        @self.celery.task(bind=True)
         def crawl_task(self, url: str, config: dict = None, parser_name: str = "default"):
             """爬虫任务"""
             from src.advanced_crawler import AdvancedCrawler, CrawlerConfig, RequestMethod
@@ -111,6 +115,10 @@ class CrawlerCelery:
                 crawler.close()
 
         return crawl_task
+
+    def register_task(self, func: Callable = None, **kwargs):
+        """注册爬虫任务（返回预注册的任务）"""
+        return self._crawl_task
 
     def add_task(
         self,
@@ -247,7 +255,7 @@ class RedisQueueManager:
         """
         # 先检查高优先级队列
         priority_key = self._key("priority_queue")
-        result = self.redis.zpopmin(priority_key, count=1)
+        result = self.redis.zpopmin(priority_key)
 
         if result:
             _, task_data = result[0]

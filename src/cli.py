@@ -14,6 +14,7 @@ from src.advanced_crawler import AdvancedCrawler, CrawlerConfig, RequestMethod
 from src.config_manager import ConfigManager, create_default_config
 from src.logger import setup_logger, get_logger
 from src.js_hook_tools import JSHookManager
+from bs4 import BeautifulSoup
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -100,7 +101,6 @@ def crawl_url(
 
     # 定义解析函数
     def html_parser(response) -> dict:
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.text, 'html.parser')
         return {
             "title": soup.find("title").text if soup.find("title") else "",

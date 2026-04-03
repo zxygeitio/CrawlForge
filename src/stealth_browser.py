@@ -6,6 +6,9 @@
 from typing import Optional
 from playwright.sync_api import Browser, BrowserContext, Page
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class StealthConfig:
     """
@@ -853,7 +856,13 @@ class StealthBrowser:
         # 添加代理支持
         if self.config.proxy:
             proxy = self.config.proxy
-            args.append(f"--proxy-server={proxy.get('server', '')}")
+            server = proxy.get('server', '')
+            if not server:
+                logger.warning("Proxy server is empty, skipping proxy configuration")
+            elif not server.startswith(('http://', 'https://', 'socks4://', 'socks5://')):
+                logger.warning(f"Proxy server URL format may be invalid: {server}, skipping proxy configuration")
+            else:
+                args.append(f"--proxy-server={server}")
 
         self._browser = self._playwright.chromium.launch(
             headless=self.config.headless,

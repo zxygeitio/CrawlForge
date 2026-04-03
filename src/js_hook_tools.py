@@ -16,6 +16,7 @@ NETWORK_HOOKS = """
 
     // XHR Hook
     var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
         console.log('[XHR]', method, url);
         this._requestUrl = url;
@@ -36,7 +37,6 @@ NETWORK_HOOKS = """
         });
         return origSend.apply(this, arguments);
     };
-    var origSend = XMLHttpRequest.prototype.send;
 
     // Fetch Hook
     var origFetch = window.fetch;
@@ -810,9 +810,9 @@ EXTENDED_CRYPTO_HOOKS = """
     // 6. URL编码 Hook
     var origEncodeURIComponent = window.encodeURIComponent;
     window.encodeURIComponent = function(str) {
-        // 只对包含敏感关键词的编码进行日志
+        // 脱敏: 不记录敏感关键词参数
         if (str && str.toString().match(/(token|sign|key|auth|password|secret)/i)) {
-            console.log('[Crypto] encodeURIComponent:', str.toString().substring(0, 50));
+            // 脱敏: 不记录敏感关键词参数
         }
         return origEncodeURIComponent.apply(this, arguments);
     };

@@ -41,7 +41,7 @@ def _validate_sql_identifier(name: str) -> str:
     验证SQL标识符(表名/字段名)的安全性
     只允许字母、数字和下划线
     """
-    if not _re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
         raise ValueError(f"Invalid SQL identifier: '{name}'. Only alphanumeric characters and underscores are allowed.")
     return name
 
@@ -193,7 +193,11 @@ class DataCleaner:
             for item in items:
                 # 对于字典,转换为可哈希的表示
                 if isinstance(item, dict):
-                    item_key = tuple(sorted(item.items()))
+                    try:
+                        item_key = tuple(sorted(item.items()))
+                    except TypeError:
+                        # 不可哈希的value(如list),序列化为JSON
+                        item_key = json.dumps(item, sort_keys=True, ensure_ascii=False)
                 else:
                     item_key = item
 
@@ -484,10 +488,10 @@ class DataTransformer:
             # 自动检测编码
             for enc in ("utf-8", "gbk", "gb2312", "gb18030", "big5", "shift_jis"):
                 try:
-                    text.encode(to_encoding)
+                    text.encode(enc).decode(enc)
                     from_encoding = enc
                     break
-                except UnicodeEncodeError:
+                except (UnicodeEncodeError, UnicodeDecodeError):
                     continue
 
         if from_encoding is None:
@@ -704,7 +708,7 @@ class DataExporter:
             create_sql = f"CREATE TABLE {table_name} ({', '.join([f'{f} TEXT' for f in fields])})"
             cursor.execute(create_sql)
         elif if_exists == "fail":
-            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
             if cursor.fetchone():
                 raise ValueError(f"Table '{table_name}' already exists")
 

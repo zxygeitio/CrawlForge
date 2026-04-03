@@ -436,6 +436,7 @@ class FileChannel(NotificationChannel):
                     f.write(json.dumps(alert.to_dict(), ensure_ascii=False) + "\n")
                 return True
             except Exception as e:
+                logger.warning(f"Failed to write alert to file {self.file_path}: {e}")
                 return False
 
 
