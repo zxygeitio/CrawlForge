@@ -583,6 +583,387 @@ DEVICE_HOOKS = """
 })();
 """
 
+# ============== WebAssembly Hook ==============
+
+WASM_HOOKS = """
+// WebAssembly 函数Hook
+(function() {
+    'use strict';
+
+    // 1. WebAssembly.compile
+    if (typeof WebAssembly !== 'undefined') {
+        var origCompile = WebAssembly.compile;
+        WebAssembly.compile = function(bytecode, importObject) {
+            console.log('[WASM] Compiling bytecode, length:', bytecode ? bytecode.length : 0);
+            return origCompile.apply(this, arguments);
+        };
+
+        // 2. WebAssembly.compileStreaming
+        if (WebAssembly.compileStreaming) {
+            var origCompileStreaming = WebAssembly.compileStreaming;
+            WebAssembly.compileStreaming = function(source, importObject) {
+                console.log('[WASM] Compiling from streaming source');
+                return origCompileStreaming.apply(this, arguments);
+            };
+        }
+
+        // 3. WebAssembly.instantiate
+        var origInstantiate = WebAssembly.instantiate;
+        WebAssembly.instantiate = function(module, importObject) {
+            console.log('[WASM] Instantiating module');
+            return origInstantiate.apply(this, arguments);
+        };
+
+        // 4. WebAssembly.instantiateStreaming
+        if (WebAssembly.instantiateStreaming) {
+            var origInstantiateStreaming = WebAssembly.instantiateStreaming;
+            WebAssembly.instantiateStreaming = function(source, importObject) {
+                console.log('[WASM] Instantiating from streaming');
+                return origInstantiateStreaming.apply(this, arguments);
+            };
+        }
+
+        // 5. WebAssembly.Memory
+        var origMemory = WebAssembly.Memory;
+        WebAssembly.Memory = function(descriptor) {
+            console.log('[WASM] Creating Memory:', descriptor);
+            return new origMemory(descriptor);
+        };
+
+        // 6. WebAssembly.Table
+        var origTable = WebAssembly.Table;
+        WebAssembly.Table = function(descriptor) {
+            console.log('[WASM] Creating Table:', descriptor);
+            return new origTable(descriptor);
+        };
+
+        // 7. 监控wasm函数调用
+        var origExecute = undefined;
+        if (typeof window.wasmExec === 'function') {
+            origExecute = window.wasmExec;
+            window.wasmExec = function() {
+                console.log('[WASM] Executing wasm function');
+                return origExecute.apply(this, arguments);
+            };
+        }
+    }
+
+    console.log('[Hook] WebAssembly hooks installed');
+})();
+"""
+
+# ============== Service Worker Hook ==============
+
+SW_HOOKS = """
+// Service Worker Hook
+(function() {
+    'use strict';
+
+    if ('serviceWorker' in navigator) {
+        // 1. register
+        var origRegister = navigator.serviceWorker.register;
+        navigator.serviceWorker.register = function(scriptURL, options) {
+            console.log('[SW] Registering service worker:', scriptURL);
+            if (options) {
+                console.log('[SW] Options:', JSON.stringify(options));
+            }
+            return origRegister.apply(this, arguments);
+        };
+
+        // 2. getRegistration
+        var origGetRegistration = navigator.serviceWorker.getRegistration;
+        navigator.serviceWorker.getRegistration = function(options) {
+            console.log('[SW] Getting registration');
+            return origGetRegistration.apply(this, arguments);
+        };
+
+        // 3. getRegistrations
+        var origGetRegistrations = navigator.serviceWorker.getRegistrations;
+        navigator.serviceWorker.getRegistrations = function() {
+            console.log('[SW] Getting all registrations');
+            return origGetRegistrations.apply(this, arguments);
+        };
+
+        // 4. ready
+        Object.defineProperty(navigator.serviceWorker, 'ready', {
+            get: function() {
+                console.log('[SW] Getting ready');
+                return Promise.resolve();
+            },
+            configurable: true
+        });
+
+        // 5. controller
+        var origControllerDesc = Object.getOwnPropertyDescriptor(navigator.serviceWorker, 'controller');
+        if (origControllerDesc) {
+            Object.defineProperty(navigator.serviceWorker, 'controller', {
+                get: function() {
+                    console.log('[SW] Getting controller');
+                    return origControllerDesc.get.apply(this);
+                },
+                configurable: true
+            });
+        }
+
+        // 6. message event监听
+        if (navigator.serviceWorker.addEventListener) {
+            var origAddListener = navigator.serviceWorker.addEventListener;
+            navigator.serviceWorker.addEventListener = function(type, listener, options) {
+                if (type === 'message') {
+                    console.log('[SW] Adding message listener');
+                }
+                return origAddListener.apply(this, arguments);
+            };
+        }
+    }
+
+    console.log('[Hook] Service Worker hooks installed');
+})();
+"""
+
+# ============== 更多加密算法Hook ==============
+
+EXTENDED_CRYPTO_HOOKS = """
+// 扩展加密算法Hook
+(function() {
+    'use strict';
+
+    // 1. RSA加密
+    if (typeof window.RSAKey === 'function') {
+        var origConstruct = window.RSAKey;
+        window.RSAKey = function() {
+            console.log('[Crypto] Creating RSAKey');
+            return new origConstruct();
+        };
+    }
+
+    // 2. Jose (JWS/JWE) Hook
+    if (typeof window.jose === 'object') {
+        console.log('[Crypto] Jose library detected');
+        var origJWS = window.jose.JWS.create;
+        if (origJWS) {
+            window.jose.JWS.create = function() {
+                console.log('[Crypto] JWS created');
+                return origJWS.apply(this, arguments);
+            };
+        }
+    }
+
+    // 3. Node.js crypto模块 (如果有)
+    if (typeof require === 'function' && typeof module !== 'undefined') {
+        try {
+            var nodeCrypto = require('crypto');
+            if (nodeCrypto) {
+                var origCreateCipher = nodeCrypto.createCipher;
+                nodeCrypto.createCipher = function(algorithm, password) {
+                    console.log('[Crypto] Node createCipher:', algorithm);
+                    return origCreateCipher.apply(this, arguments);
+                };
+
+                var origCreateDecipher = nodeCrypto.createDecipher;
+                nodeCrypto.createDecipher = function(algorithm, password) {
+                    console.log('[Crypto] Node createDecipher:', algorithm);
+                    return origCreateDecipher.apply(this, arguments);
+                };
+
+                var origCreateHash = nodeCrypto.createHash;
+                nodeCrypto.createHash = function(algorithm) {
+                    console.log('[Crypto] Node createHash:', algorithm);
+                    return origCreateHash.apply(this, arguments);
+                };
+
+                var origCreateSign = nodeCrypto.createSign;
+                nodeCrypto.createSign = function(algorithm) {
+                    console.log('[Crypto] Node createSign:', algorithm);
+                    return origCreateSign.apply(this, arguments);
+                };
+
+                var origCreateVerify = nodeCrypto.createVerify;
+                nodeCrypto.createVerify = function(algorithm) {
+                    console.log('[Crypto] Node createVerify:', algorithm);
+                    return origCreateVerify.apply(this, arguments);
+                };
+            }
+        } catch(e) {}
+    }
+
+    // 4. ASN1编码 Hook
+    if (typeof window.asn1 === 'object') {
+        console.log('[Crypto] ASN1 library detected');
+    }
+
+    // 5. Base64编码 Hook
+    if (typeof window.Base64 === 'object') {
+        var origEncode = window.Base64.encode;
+        if (origEncode) {
+            window.Base64.encode = function(str) {
+                console.log('[Crypto] Base64 encode:', str.substring ? str.substring(0, 50) : 'binary');
+                return origEncode.apply(this, arguments);
+            };
+        }
+    }
+
+    // 6. URL编码 Hook
+    var origEncodeURIComponent = window.encodeURIComponent;
+    window.encodeURIComponent = function(str) {
+        // 只对包含敏感关键词的编码进行日志
+        if (str && str.toString().match(/(token|sign|key|auth|password|secret)/i)) {
+            console.log('[Crypto] encodeURIComponent:', str.toString().substring(0, 50));
+        }
+        return origEncodeURIComponent.apply(this, arguments);
+    };
+
+    var origDecodeURIComponent = window.decodeURIComponent;
+    window.decodeURIComponent = function(str) {
+        console.log('[Crypto] decodeURIComponent');
+        return origDecodeURIComponent.apply(this, arguments);
+    };
+
+    // 7. btoa/atob Hook
+    var origBtoa = window.btoa;
+    window.btoa = function(str) {
+        console.log('[Crypto] btoa');
+        return origBtoa.apply(this, arguments);
+    };
+
+    var origAtob = window.atob;
+    window.atob = function(str) {
+        console.log('[Crypto] atob');
+        return origAtob.apply(this, arguments);
+    };
+
+    console.log('[Hook] Extended crypto hooks installed');
+})();
+"""
+
+# ============== WebSocket扩展Hook ==============
+
+WEBSOCKET_HOOKS = """
+// WebSocket扩展Hook
+(function() {
+    'use strict';
+
+    var OrigWebSocket = window.WebSocket;
+    var wsConnections = [];
+
+    window.WebSocket = function(url, protocols) {
+        console.log('[WS] Creating connection to:', url);
+        if (protocols) {
+            console.log('[WS] Protocols:', protocols);
+        }
+
+        var ws = new OrigWebSocket(url, protocols);
+        wsConnections.push({url: url, ws: ws, readyState: ws.readyState});
+
+        // Hook send
+        var origSend = ws.send;
+        ws.send = function(data) {
+            console.log('[WS] Sending data:', data ? (data.substring ? data.substring(0, 100) : '[binary]') : '');
+            return origSend.apply(this, arguments);
+        };
+
+        // Hook close
+        var origClose = ws.close;
+        ws.close = function(code, reason) {
+            console.log('[WS] Closing:', code, reason);
+            return origClose.apply(this, arguments);
+        };
+
+        // Hook binaryType
+        Object.defineProperty(ws, 'binaryType', {
+            get: function() { return this._binaryType || 'arraybuffer'; },
+            set: function(val) {
+                console.log('[WS] binaryType set to:', val);
+                this._binaryType = val;
+            },
+            configurable: true
+        });
+
+        // 事件hook
+        ws.addEventListener = (function(origAddEventListener) {
+            return function(type, listener, options) {
+                if (type === 'message') {
+                    console.log('[WS] Message listener added');
+                } else if (type === 'open') {
+                    console.log('[WS] Open listener added');
+                } else if (type === 'error') {
+                    console.log('[WS] Error listener added');
+                }
+                return origAddEventListener.apply(this, arguments);
+            };
+        })(ws.addEventListener.bind(ws));
+
+        return ws;
+    };
+
+    // 复制静态属性
+    window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+    window.WebSocket.OPEN = OrigWebSocket.OPEN;
+    window.WebSocket.CLOSING = OrigWebSocket.CLOSING;
+    window.WebSocket.CLOSED = OrigWebSocket.CLOSED;
+
+    // 获取所有连接
+    window._getWSConnections = function() {
+        return wsConnections;
+    };
+
+    console.log('[Hook] WebSocket hooks installed');
+})();
+"""
+
+# ============== IndexedDB Hook ==============
+
+INDEXEDDB_HOOKS = """
+// IndexedDB Hook
+(function() {
+    'use strict';
+
+    if (window.indexedDB) {
+        // 1. open
+        var origOpen = indexedDB.open;
+        indexedDB.open = function(name, version) {
+            console.log('[IDB] Opening database:', name, 'version:', version);
+            var request = origOpen.apply(this, arguments);
+
+            request.addEventListener('success', function(e) {
+                console.log('[IDB] Database opened successfully');
+            });
+
+            request.addEventListener('error', function(e) {
+                console.log('[IDB] Database open error');
+            });
+
+            return request;
+        };
+
+        // 2. deleteDatabase
+        var origDeleteDatabase = indexedDB.deleteDatabase;
+        indexedDB.deleteDatabase = function(name) {
+            console.log('[IDB] Deleting database:', name);
+            return origDeleteDatabase.apply(this, arguments);
+        };
+
+        // 3. databases (Chrome 71+)
+        if (indexedDB.databases) {
+            var origDatabases = indexedDB.databases;
+            indexedDB.databases = function() {
+                console.log('[IDB] Listing all databases');
+                return origDatabases.apply(this, arguments);
+            };
+        }
+
+        // 4. IDBFactory原型hook
+        var origGetConnection = IDBFactory.prototype.open;
+        IDBFactory.prototype.open = function(name, version) {
+            console.log('[IDB] Factory open:', name);
+            return origGetConnection.apply(this, arguments);
+        };
+    }
+
+    console.log('[Hook] IndexedDB hooks installed');
+})();
+"""
+
 # ============== 完整Hook管理器 ==============
 
 class JSHookManager:
@@ -596,6 +977,11 @@ class JSHookManager:
         'antidebug': ANTI_DEBUG_HOOKS,
         'slider': SLIDER_HOOKS,
         'device': DEVICE_HOOKS,
+        'wasm': WASM_HOOKS,
+        'service_worker': SW_HOOKS,
+        'extended_crypto': EXTENDED_CRYPTO_HOOKS,
+        'websocket': WEBSOCKET_HOOKS,
+        'indexeddb': INDEXEDDB_HOOKS,
     }
 
     @classmethod
@@ -645,3 +1031,36 @@ class JSHookManager:
     def install_captcha_hook(cls, page):
         """安装滑块验证码Hook"""
         cls.install_hooks(page, ['slider'])
+
+    @classmethod
+    def install_wasm_hook(cls, page):
+        """安装WebAssembly Hook"""
+        cls.install_hooks(page, ['wasm'])
+
+    @classmethod
+    def install_sw_hook(cls, page):
+        """安装Service Worker Hook"""
+        cls.install_hooks(page, ['service_worker'])
+
+    @classmethod
+    def install_websocket_hook(cls, page):
+        """安装WebSocket Hook"""
+        cls.install_hooks(page, ['websocket'])
+
+    @classmethod
+    def install_indexeddb_hook(cls, page):
+        """安装IndexedDB Hook"""
+        cls.install_hooks(page, ['indexeddb'])
+
+    @classmethod
+    def install_extended_crypto_hook(cls, page):
+        """安装扩展加密Hook"""
+        cls.install_hooks(page, ['extended_crypto'])
+
+    @classmethod
+    def install_full_hook(cls, page):
+        """安装完整Hook (除slider外)"""
+        cls.install_hooks(page, [
+            'network', 'crypto', 'storage', 'fingerprint', 'antidebug', 'device',
+            'wasm', 'service_worker', 'extended_crypto', 'websocket', 'indexeddb'
+        ])

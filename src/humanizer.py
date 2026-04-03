@@ -12,6 +12,7 @@
 """
 
 import asyncio
+import math
 import random
 import time
 from dataclasses import dataclass, field
@@ -663,6 +664,438 @@ def humanized_delay(
     return decorator
 
 
+# ============== 触摸轨迹模拟 ==============
+
+class TouchTrajectory:
+    """
+    触摸轨迹生成
+
+    模拟人类触摸操作:
+    - 触摸按下、移动、抬起
+    - 多指手势
+    - 长按短按
+    """
+
+    @staticmethod
+    def generate_swipe(
+        start: Tuple[float, float],
+        end: Tuple[float, float],
+        duration: float = 0.3,
+        num_points: int = 30,
+    ) -> List[Tuple[float, float, float]]:
+        """
+        生成滑动轨迹
+
+        Args:
+            start: 起始点 (x, y)
+            end: 终点 (x, y)
+            duration: 滑动时长(秒)
+            num_points: 轨迹点数
+
+        Returns:
+            [(x, y, timestamp), ...]
+        """
+        trajectory = []
+        start_time = time.time()
+
+        for i in range(num_points):
+            t = i / (num_points - 1)
+
+            # ease-out缓动
+            ease = 1 - (1 - t) ** 2
+
+            x = start[0] + (end[0] - start[0]) * ease
+            y = start[1] + (end[1] - start[1]) * ease
+
+            # 添加轻微抖动
+            jitter_x = random.gauss(0, 1.5) if i > num_points * 0.1 else 0
+            jitter_y = random.gauss(0, 1.5) if i > num_points * 0.1 else 0
+
+            x += jitter_x
+            y += jitter_y
+
+            timestamp = start_time + duration * t
+            trajectory.append((x, y, timestamp))
+
+        return trajectory
+
+    @staticmethod
+    def generate_tap(
+        position: Tuple[float, float],
+        duration: float = 0.1,
+    ) -> List[Tuple[float, float, float]]:
+        """
+        生成点击轨迹
+
+        Args:
+            position: 点击位置
+            duration: 按下时长
+
+        Returns:
+            [(x, y, timestamp), ...]
+        """
+        start_time = time.time()
+        return [
+            (position[0], position[1], start_time),
+            (position[0], position[1], start_time + duration / 2),
+            (position[0], position[1], start_time + duration),
+        ]
+
+    @staticmethod
+    def generate_long_press(
+        position: Tuple[float, float],
+        duration: float = 0.5,
+    ) -> List[Tuple[float, float, float]]:
+        """
+        生成长按轨迹
+
+        Args:
+            position: 按下位置
+            duration: 按住时长
+
+        Returns:
+            [(x, y, timestamp), ...]
+        """
+        start_time = time.time()
+        # 长按期间有微小的移动(模拟手不稳)
+        points = []
+        for i in range(int(duration * 10)):
+            jitter_x = random.gauss(0, 0.5)
+            jitter_y = random.gauss(0, 0.5)
+            points.append((
+                position[0] + jitter_x,
+                position[1] + jitter_y,
+                start_time + i * 0.1
+            ))
+        return points
+
+    @staticmethod
+    def generate_pinch(
+        center: Tuple[float, float],
+        scale: float = 1.5,
+        duration: float = 0.5,
+    ) -> List[dict]:
+        """
+        生成双指缩放轨迹
+
+        Args:
+            center: 中心点
+            scale: 缩放比例
+            duration: 时长
+
+        Returns:
+            [{"touch1": (x, y), "touch2": (x, y), "timestamp"}, ...]
+        """
+        trajectory = []
+        start_time = time.time()
+
+        base_distance = 50  # 两指基础距离
+
+        for i in range(20):
+            t = i / 19
+            ease = 1 - (1 - t) ** 2
+
+            current_distance = base_distance * (1 + (scale - 1) * ease)
+
+            # 两指分布在中心两侧
+            angle = random.uniform(0, 6.28)
+            dx = current_distance / 2
+            dy = random.uniform(-5, 5)
+
+            # 先定义抖动
+            jitter_x = random.gauss(0, 1)
+            jitter_y = random.gauss(0, 1)
+
+            touch1 = (center[0] - dx * abs(math.cos(angle)) + jitter_x, center[1] + dy)
+            touch2 = (center[0] + dx * abs(math.cos(angle)) + jitter_x, center[1] + dy)
+
+            trajectory.append({
+                "touch1": (touch1[0] + jitter_x, touch1[1] + jitter_y),
+                "touch2": (touch2[0] + jitter_x, touch2[1] + jitter_y),
+                "timestamp": start_time + duration * t,
+                "scale": 1 + (scale - 1) * ease,
+            })
+
+        return trajectory
+
+
+# ============== 键盘输入模拟 ==============
+
+class KeyboardSimulator:
+    """
+    键盘输入模拟
+
+    模拟人类打字行为:
+    - 按键延迟
+    - 打字节奏
+    - 错误修正
+    - 大小写切换
+    """
+
+    def __init__(self):
+        self.keystroke_delays: List[float] = []
+        self.last_key_time = 0
+
+    def get_keystroke_delay(self) -> float:
+        """
+        获取按键间隔延迟
+
+        人类打字不是均匀间隔，而是符合某种分布
+        """
+        # 使用之前的延迟来生成下一个
+        if len(self.keystroke_delays) < 2:
+            delay = random.gauss(0.1, 0.05)
+        else:
+            # 基于最近两次延迟的均值
+            avg_delay = sum(self.keystroke_delays[-2:]) / 2
+            delay = random.gauss(avg_delay, 0.03)
+
+        self.keystroke_delays.append(delay)
+        if len(self.keystroke_delays) > 10:
+            self.keystroke_delays.pop(0)
+
+        return max(0.03, delay)
+
+    def get_press_duration(self) -> float:
+        """获取按键按下时长"""
+        return random.gauss(0.08, 0.02)
+
+    def get_release_delay(self) -> float:
+        """获取按键释放到下一个按下之间的延迟"""
+        return random.gauss(0.02, 0.01)
+
+    @staticmethod
+    def type_string(text: str) -> List[dict]:
+        """
+        生成打字序列
+
+        Args:
+            text: 要输入的文本
+
+        Returns:
+            [{"key": "a", "press_time": t, "release_time": t+0.08}, ...]
+        """
+        simulator = KeyboardSimulator()
+        sequence = []
+        current_time = time.time()
+
+        for char in text:
+            # 计算按下时间
+            press_time = current_time
+            release_time = press_time + simulator.get_press_duration()
+
+            sequence.append({
+                "char": char,
+                "key": char.lower(),
+                "press_time": press_time,
+                "release_time": release_time,
+                "is_upper": char.isupper(),
+                "is_special": not char.isalnum(),
+            })
+
+            # 更新下次按键时间
+            current_time = release_time + simulator.get_release_delay()
+
+        return sequence
+
+    @staticmethod
+    def generate_typing_script(text: str, page) -> None:
+        """
+        在Playwright页面中模拟打字
+
+        Args:
+            text: 要输入的文本
+            page: Playwright page对象
+        """
+        sequence = KeyboardSimulator.type_string(text)
+
+        for event in sequence:
+            key = event["key"]
+
+            # 处理特殊字符
+            if event["is_special"]:
+                if event["char"] == " ":
+                    key = "Space"
+                elif event["char"] == "\n":
+                    key = "Enter"
+                elif event["char"] == "\t":
+                    key = "Tab"
+
+            # 处理大写
+            if event["is_upper"]:
+                page.keyboard.down("Shift")
+
+            page.keyboard.press(key)
+
+            if event["is_upper"]:
+                page.keyboard.up("Shift")
+
+            # 添加延迟
+            delay = event["release_time"] - event["press_time"]
+            time.sleep(delay)
+
+
+# ============== 更真实的滚动模拟 ==============
+
+class ScrollSimulator:
+    """
+    滚动模拟
+
+    模拟人类滚动行为:
+    - 快速滚动和慢速滚动
+    - 在感兴趣内容处停顿
+    - 随机回滚
+    - Flick惯性滚动
+    """
+
+    @staticmethod
+    def generate_flick_scroll(
+        start_y: int,
+        page_height: int,
+        viewport_height: int,
+        intensity: str = "normal",
+    ) -> List[dict]:
+        """
+        生成快速 flick 滚动
+
+        Args:
+            start_y: 起始位置
+            page_height: 页面总高度
+            viewport_height: 视口高度
+            intensity: 强度 (light/normal/heavy)
+
+        Returns:
+            [{"y": y, "duration": d, "timestamp": t}, ...]
+        """
+        intensity_map = {
+            "light": (50, 150, 0.2),
+            "normal": (150, 400, 0.4),
+            "heavy": (400, 800, 0.6),
+        }
+
+        min_scroll, max_scroll, base_duration = intensity_map.get(intensity, (150, 400, 0.4))
+
+        pattern = []
+        current_y = start_y
+        current_time = time.time()
+
+        while current_y < page_height:
+            # 随机滚动距离
+            scroll_amount = random.randint(min_scroll, max_scroll)
+
+            # 随机是否回滚 (10%概率)
+            if random.random() < 0.1 and len(pattern) > 0:
+                scroll_amount = -random.randint(20, 100)
+
+            new_y = max(0, min(current_y + scroll_amount, page_height - viewport_height))
+
+            # 滚动持续时间
+            duration = base_duration * (0.5 + random.random())
+
+            pattern.append({
+                "y": new_y,
+                "duration": duration,
+                "timestamp": current_time,
+            })
+
+            current_y = new_y
+            current_time += duration
+
+            # 滚动后停顿
+            if random.random() > 0.6:
+                pause = random.uniform(0.3, 1.5)
+                current_time += pause
+
+            # 到达底部停止
+            if current_y >= page_height - viewport_height:
+                break
+
+        return pattern
+
+    @staticmethod
+    def generate_reading_scroll(
+        page_height: int,
+        viewport_height: int,
+        content_density: float = 0.5,
+    ) -> List[dict]:
+        """
+        生成阅读式滚动
+
+        特点:
+        - 缓慢滚动
+        - 频繁停顿
+        - 偶尔回看
+
+        Args:
+            page_height: 页面高度
+            viewport_height: 视口高度
+            content_density: 内容密度 (0-1, 越高停顿越多)
+
+        Returns:
+            [{"y": y, "duration": d, "action": "scroll/pause", "timestamp": t}, ...]
+        """
+        pattern = []
+        current_y = 0
+        current_time = time.time()
+
+        while current_y < page_height:
+            # 计算剩余内容比例
+            remaining_ratio = (page_height - current_y) / page_height
+
+            # 阅读一段内容的滚动距离
+            scroll_amount = int(viewport_height * random.uniform(0.3, 0.8))
+
+            # 内容密度高时滚动少
+            if content_density > 0.5:
+                scroll_amount = int(scroll_amount * (1 - content_density * 0.5))
+
+            new_y = min(current_y + scroll_amount, page_height - viewport_height)
+
+            # 滚动持续时间
+            duration = random.uniform(0.3, 0.8)
+
+            pattern.append({
+                "y": new_y,
+                "duration": duration,
+                "action": "scroll",
+                "timestamp": current_time,
+            })
+
+            current_y = new_y
+            current_time += duration
+
+            # 阅读停顿
+            if random.random() < content_density:
+                pause_duration = random.uniform(1, 4)
+                pattern.append({
+                    "y": current_y,
+                    "duration": pause_duration,
+                    "action": "pause",
+                    "timestamp": current_time,
+                })
+                current_time += pause_duration
+
+            # 随机回看 (20%概率)
+            if random.random() < 0.2 and len(pattern) > 3:
+                look_back = random.randint(50, 200)
+                look_back_y = max(0, current_y - look_back)
+
+                pattern.append({
+                    "y": look_back_y,
+                    "duration": random.uniform(0.2, 0.5),
+                    "action": "scroll",
+                    "timestamp": current_time,
+                })
+                current_time += 0.3
+                current_y = look_back_y
+
+            # 到达底部
+            if current_y >= page_height - viewport_height:
+                break
+
+        return pattern
+
+
 # ============== 导出 ==============
 
 __all__ = [
@@ -673,4 +1106,7 @@ __all__ = [
     "HeaderOrder",
     "BehaviorSimulator",
     "humanized_delay",
+    "TouchTrajectory",
+    "KeyboardSimulator",
+    "ScrollSimulator",
 ]
