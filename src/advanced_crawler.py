@@ -13,6 +13,7 @@ import json
 import logging
 import random
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -115,6 +116,7 @@ class FileStorage(StorageBackend):
         self.file_path = file_path
         self._lock = asyncio.Lock()
         self.items = []
+        self._url_index = set()
         self._loaded = False
 
     async def _ensure_loaded(self):
@@ -124,6 +126,7 @@ class FileStorage(StorageBackend):
                     self.items = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, PermissionError):
                 self.items = []
+            self._url_index = {item["url"] for item in self.items}
             self._loaded = True
 
     async def _save(self):
@@ -136,19 +139,21 @@ class FileStorage(StorageBackend):
         item["hash"] = hashlib.md5(item["url"].encode()).hexdigest()
         item["updated_at"] = datetime.utcnow().isoformat()
 
-        for i, existing in enumerate(self.items):
-            if existing["url"] == item["url"]:
-                self.items[i] = item
-                await self._save()
-                return True
+        if item["url"] in self._url_index:
+            for i, existing in enumerate(self.items):
+                if existing["url"] == item["url"]:
+                    self.items[i] = item
+                    await self._save()
+                    return True
 
         self.items.append(item)
+        self._url_index.add(item["url"])
         await self._save()
         return True
 
     async def exists(self, url: str) -> bool:
         await self._ensure_loaded()
-        return any(item["url"] == url for item in self.items)
+        return url in self._url_index
 
     async def get_all(self, filter_dict: dict = None) -> list:
         await self._ensure_loaded()
@@ -163,6 +168,7 @@ class SyncFileStorage:
     def __init__(self, file_path: str):
         self.file_path = file_path
         self.items = self._load()
+        self._url_index = {item["url"] for item in self.items}
 
     def _load(self) -> list:
         try:
@@ -179,18 +185,20 @@ class SyncFileStorage:
         item["hash"] = hashlib.md5(item["url"].encode()).hexdigest()
         item["updated_at"] = datetime.utcnow().isoformat()
 
-        for i, existing in enumerate(self.items):
-            if existing["url"] == item["url"]:
-                self.items[i] = item
-                self._save()
-                return True
+        if item["url"] in self._url_index:
+            for i, existing in enumerate(self.items):
+                if existing["url"] == item["url"]:
+                    self.items[i] = item
+                    self._save()
+                    return True
 
         self.items.append(item)
+        self._url_index.add(item["url"])
         self._save()
         return True
 
     def exists(self, url: str) -> bool:
-        return any(item["url"] == url for item in self.items)
+        return url in self._url_index
 
     def get_all(self, filter_dict: dict = None) -> list:
         if not filter_dict:
@@ -478,7 +486,7 @@ class AdvancedCrawler:
         # 使用config中的concurrent值作为默认值
         concurrent_limit = max_concurrent or self.config.concurrent
         results = []
-        pending_urls = [start_url]
+        pending_urls = deque([start_url])
         visited_urls = set()
         semaphore = asyncio.Semaphore(concurrent_limit)
 
@@ -491,7 +499,7 @@ class AdvancedCrawler:
                 return await self.async_crawl_page(url, parser, use_method, **kwargs)
 
         while len(visited_urls) < max_pages and pending_urls:
-            current_url = pending_urls.pop(0)
+            current_url = pending_urls.popleft()
             if current_url in visited_urls:
                 continue
 
