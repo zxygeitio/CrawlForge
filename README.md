@@ -1,5 +1,11 @@
 # CrawlForge
 
+[![Stars](https://img.shields.io/github/stars/zxygeitio/CrawlForge?style=social)](https://github.com/zxygeitio/CrawlForge/stargazers)
+[![Forks](https://img.shields.io/github/forks/zxygeitio/CrawlForge?style=social)](https://github.com/zxygeitio/CrawlForge/network/members)
+[![License](https://img.shields.io/github/license/zxygeitio/CrawlForge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
+[![Last Commit](https://img.shields.io/github/last-commit/zxygeitio/CrawlForge/main)](https://github.com/zxygeitio/CrawlForge/commits)
+
 **A powerful, stealthy crawler framework with anti-detection capabilities.**
 
 CrawlForge is a production-ready Python web scraping framework built for challenging websites that employ advanced anti-bot measures. It combines TLS fingerprint bypass, stealth browser automation, and human behavior simulation to extract data reliably.
