@@ -3,6 +3,10 @@ JS逆向Hook工具箱 v2
 提供更完善的浏览器Hook脚本
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ============== 网络请求Hook ==============
 
 NETWORK_HOOKS = """
@@ -1010,7 +1014,7 @@ class JSHookManager:
             script = '\n'.join(scripts)
 
         page.evaluate(script)
-        print(f"[JSHook] Installed hooks: {hook_names or 'all'}")
+        logger.debug(f"Installed hooks: {hook_names or 'all'}")
 
     @classmethod
     def install_network_hook(cls, page):

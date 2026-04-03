@@ -33,6 +33,7 @@ from src.captcha_solver import (
     CaptchaResult,
     BaseCaptchaSolver,
     SliderCaptchaSolver,
+    ProtocolSliderCaptchaSolver,
     ImageCaptchaSolver,
     GeeTestCaptchaSolver,
     create_solver,
@@ -45,9 +46,20 @@ from src.humanizer import (
     HeaderOrder,
     BehaviorSimulator,
     humanized_delay,
+    TouchTrajectory,
+    KeyboardSimulator,
+    ScrollSimulator,
 )
 from src.monitor import Monitor, AlertManager
 from src.data_processor import DataCleaner, DataExporter
+from src.tls_fingerprint import TLSFingerprintAnalyzer, JA3Calculator, detect_tls_fingerprint
+from src.page_analyzer import (
+    PageAnalysis,
+    PageStructureAnalyzer,
+    SimpleAIPageAnalyzer,
+    CaptchaType,
+    AntiBotMeasure,
+)
 
 __all__ = [
     # 核心爬虫
@@ -87,6 +99,7 @@ __all__ = [
     "CaptchaResult",
     "BaseCaptchaSolver",
     "SliderCaptchaSolver",
+    "ProtocolSliderCaptchaSolver",
     "ImageCaptchaSolver",
     "GeeTestCaptchaSolver",
     "create_solver",
@@ -98,12 +111,25 @@ __all__ = [
     "HeaderOrder",
     "BehaviorSimulator",
     "humanized_delay",
+    "TouchTrajectory",
+    "KeyboardSimulator",
+    "ScrollSimulator",
     # 监控
     "Monitor",
     "AlertManager",
     # 数据处理
     "DataCleaner",
     "DataExporter",
+    # TLS指纹分析
+    "TLSFingerprintAnalyzer",
+    "JA3Calculator",
+    "detect_tls_fingerprint",
+    # 页面分析
+    "PageAnalysis",
+    "PageStructureAnalyzer",
+    "SimpleAIPageAnalyzer",
+    "CaptchaType",
+    "AntiBotMeasure",
 ]
 
 __version__ = "2.0.0"

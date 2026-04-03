@@ -802,16 +802,18 @@ class TouchTrajectory:
             dx = current_distance / 2
             dy = random.uniform(-5, 5)
 
-            # 先定义抖动
+            # 抖动
             jitter_x = random.gauss(0, 1)
             jitter_y = random.gauss(0, 1)
 
-            touch1 = (center[0] - dx * abs(math.cos(angle)) + jitter_x, center[1] + dy)
-            touch2 = (center[0] + dx * abs(math.cos(angle)) + jitter_x, center[1] + dy)
+            touch1_x = center[0] - dx * abs(math.cos(angle)) + jitter_x
+            touch1_y = center[1] + dy + jitter_y
+            touch2_x = center[0] + dx * abs(math.cos(angle)) + jitter_x
+            touch2_y = center[1] + dy + jitter_y
 
             trajectory.append({
-                "touch1": (touch1[0] + jitter_x, touch1[1] + jitter_y),
-                "touch2": (touch2[0] + jitter_x, touch2[1] + jitter_y),
+                "touch1": (touch1_x, touch1_y),
+                "touch2": (touch2_x, touch2_y),
                 "timestamp": start_time + duration * t,
                 "scale": 1 + (scale - 1) * ease,
             })

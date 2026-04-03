@@ -10,8 +10,10 @@
 import asyncio
 import hashlib
 import json
+import logging
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -26,6 +28,9 @@ from src.proxy_manager import ProxyPoolManager, ProxyPoolConfig, ProxyStatus
 from src.rate_limiter import TokenBucket, SlidingWindowRateLimiter, MultiLimiter
 from src.stealth_browser import StealthBrowser, StealthConfig, STealth_JS_INJECT
 from src.js_hook_tools import JSHookManager
+
+# 创建logger
+logger = logging.getLogger(__name__)
 
 
 # ============== 配置 ==============
@@ -117,7 +122,7 @@ class FileStorage(StorageBackend):
             try:
                 with open(self.file_path, 'r', encoding='utf-8') as f:
                     self.items = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError):
+            except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, PermissionError):
                 self.items = []
             self._loaded = True
 
@@ -163,7 +168,7 @@ class SyncFileStorage:
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, PermissionError):
             return []
 
     def _save(self):
@@ -266,7 +271,7 @@ class AdvancedCrawler:
                 return curl_requests.get(url, **kwargs)
             return curl_requests.post(url, **kwargs)
         except Exception as e:
-            print(f"curl_cffi Error: {e}")
+            logger.exception(f"curl_cffi Error for {url}: {e}")
             return None
 
     def _request_requests(self, method: str, url: str, **kwargs) -> Optional[requests.Response]:
@@ -283,7 +288,7 @@ class AdvancedCrawler:
                 return self._session.get(url, **kwargs)
             return self._session.post(url, **kwargs)
         except Exception as e:
-            print(f"requests Error: {e}")
+            logger.exception(f"requests Error for {url}: {e}")
             return None
 
     def _request_playwright(self, url: str, wait_until: str = "domcontentloaded",
@@ -317,14 +322,17 @@ class AdvancedCrawler:
                 "content": content
             }
         except Exception as e:
-            print(f"Playwright Error: {e}")
+            logger.exception(f"Playwright Error for {url}: {e}")
             return None
         finally:
             # 确保资源释放，即使发生异常也不例外
-            if context:
-                context.close()
-            if browser:
-                browser.close()
+            try:
+                if context:
+                    context.close()
+                if browser:
+                    browser.close()
+            except Exception as e:
+                logger.warning(f"Failed to close browser resources: {e}")
 
     async def _async_request_curl(self, method: str, url: str, **kwargs) -> Optional[Any]:
         """异步curl_cffi请求"""
@@ -336,7 +344,7 @@ class AdvancedCrawler:
                 return await curl_requests.get(url, **kwargs)
             return await curl_requests.post(url, **kwargs)
         except Exception as e:
-            print(f"async_curl Error: {e}")
+            logger.exception(f"async_curl Error for {url}: {e}")
             return None
 
     def _exponential_backoff(self, attempt: int) -> float:
@@ -353,7 +361,7 @@ class AdvancedCrawler:
         """发送请求 (同步)"""
         # 增量检查
         if self.storage.exists(url):
-            print(f"Already crawled: {url}")
+            logger.info(f"Already crawled: {url}")
             return None
 
         for attempt in range(self.config.retry_times):
@@ -370,7 +378,7 @@ class AdvancedCrawler:
 
             if attempt < self.config.retry_times - 1:
                 delay = self._exponential_backoff(attempt)
-                print(f"Retry {attempt + 1} after {delay}s...")
+                logger.warning(f"Retry {attempt + 1} after {delay}s for {url}...")
                 time.sleep(delay)
 
         return None
@@ -384,7 +392,7 @@ class AdvancedCrawler:
     ) -> Optional[Any]:
         """发送请求 (异步)"""
         if self.storage.exists(url):
-            print(f"Already crawled: {url}")
+            logger.info(f"Already crawled: {url}")
             return None
 
         for attempt in range(self.config.retry_times):
@@ -400,7 +408,7 @@ class AdvancedCrawler:
 
             if attempt < self.config.retry_times - 1:
                 delay = self._exponential_backoff(attempt)
-                print(f"Retry {attempt + 1} after {delay}s...")
+                logger.warning(f"Retry {attempt + 1} after {delay}s for {url}...")
                 await asyncio.sleep(delay)
 
         return None
@@ -425,7 +433,7 @@ class AdvancedCrawler:
                 self.storage.save(item)
             return item
         except Exception as e:
-            print(f"Parse Error for {url}: {e}")
+            logger.exception(f"Parse Error for {url}: {e}")
             return None
 
     async def async_crawl_page(
@@ -446,12 +454,14 @@ class AdvancedCrawler:
                 item["url"] = url
                 item["crawled_at"] = datetime.utcnow().isoformat()
                 if isinstance(self.storage, SyncFileStorage):
-                    self.storage.save(item)
+                    # 在executor中运行同步存储操作，避免阻塞事件循环
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, self.storage.save, item)
                 else:
                     await self.storage.save(item)
             return item
         except Exception as e:
-            print(f"Parse Error for {url}: {e}")
+            logger.exception(f"Parse Error for {url}: {e}")
             return None
 
     async def crawl_site_async(
@@ -475,7 +485,7 @@ class AdvancedCrawler:
                 if url in visited_urls:
                     return None
                 visited_urls.add(url)
-                print(f"Crawling: {url}")
+                logger.debug(f"Crawling: {url}")
                 return await self.async_crawl_page(url, parser, use_method, **kwargs)
 
         while len(visited_urls) < max_pages and pending_urls:

@@ -198,16 +198,27 @@ class ProxyPoolManager:
             if proxy.score < self.config.min_score:
                 proxy.status = ProxyStatus.DEAD
 
+    def _normalize_proxy_url(self, proxy_url: str) -> str:
+        """标准化代理URL格式"""
+        # 支持的协议前缀
+        valid_prefixes = ('http://', 'https://', 'socks5://', 'socks4://')
+        if any(proxy_url.startswith(p) for p in valid_prefixes):
+            return proxy_url
+        # 没有协议前缀，默认添加http://
+        return f"http://{proxy_url}"
+
     async def check_proxy_health(self, proxy: Proxy) -> bool:
         """检查单个代理健康状态"""
         proxy.status = ProxyStatus.CHECKING
 
         try:
+            normalized_proxy = self._normalize_proxy_url(proxy.url)
+
             async with aiohttp.ClientSession() as session:
                 start = time.time()
                 async with session.get(
                     self.config.check_url,
-                    proxy=f"http://{proxy.url}",
+                    proxy=normalized_proxy,
                     timeout=aiohttp.ClientTimeout(total=self.config.check_timeout)
                 ) as resp:
                     latency = time.time() - start
