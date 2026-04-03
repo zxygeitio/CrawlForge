@@ -266,11 +266,12 @@ FINGERPRINT_HOOKS = """
                 return origToDataURL.apply(this, arguments);
             };
 
-            // 噪声getImageData
+            // 注意：每次调用添加随机噪声，用于对抗 Canvas 指纹识别
+            // 如需精确像素，禁用此钩子或使用 FINGERPRINT_HOOKS_WITHOUT_NOISE
             var origGetImageData = ctx.getImageData;
             ctx.getImageData = function(sx, sy, sw, sh) {
                 var data = origGetImageData.apply(this, arguments);
-                // 添加少量噪声防指纹
+                // 添加少量随机噪声防指纹
                 for (var i = 0; i < data.data.length; i += 4) {
                     data.data[i] += (Math.random() - 0.5) * 2;
                     data.data[i+1] += (Math.random() - 0.5) * 2;
@@ -788,7 +789,7 @@ EXTENDED_CRYPTO_HOOKS = """
                     return origCreateVerify.apply(this, arguments);
                 };
             }
-        } catch(e) {}
+        } catch(e) { console.log('[Crypto] Node crypto hook error:', e.message); }
     }
 
     // 4. ASN1编码 Hook

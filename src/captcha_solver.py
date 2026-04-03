@@ -114,6 +114,10 @@ class SliderCaptchaSolver(BaseCaptchaSolver):
         """
         start_time = time.time()
 
+        # 边界检查: offset_x 不能为负
+        if offset_x < 0:
+            offset_x = 0
+
         try:
             # 优先使用字节数据解码
             if bg_image_bytes:
@@ -129,8 +133,8 @@ class SliderCaptchaSolver(BaseCaptchaSolver):
             else:
                 raise ValueError("Need bg_image or bg_image_bytes")
 
-            # 滑动距离
-            self.slide_distance = gap_x - offset_x
+            # 滑动距离（保证非负）
+            self.slide_distance = max(0, gap_x - offset_x)
 
             # 生成人类滑动轨迹 (升级版物理模型)
             self.track_list = self._generate_human_trajectory_v2(self.slide_distance)
@@ -221,8 +225,19 @@ class SliderCaptchaSolver(BaseCaptchaSolver):
         # 找到边缘最强的位置 (排除边缘)
         start = int(len(col_strength) * 0.1)
         end = int(len(col_strength) * 0.9)
+        exclude_range = set(range(start, end))
 
         max_idx = start + col_strength[start:end].argmax()
+
+        # 边界检查: 如果最大值在排除区域内,重新计算
+        if max_idx in exclude_range:
+            mask = np.ones_like(col_strength, dtype=bool)
+            for idx in exclude_range:
+                mask[idx] = False
+            if mask.any():
+                max_idx = np.argmax(col_strength * mask)
+            else:
+                max_idx = 0  # 备用值
 
         # 平滑处理
         window = 5

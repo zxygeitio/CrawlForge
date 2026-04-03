@@ -290,6 +290,9 @@ class TrendAlertRule(AlertRule):
         if not self._can_trigger():
             return None
 
+        if self.window_size <= 0:
+            return None  # 无历史数据，无法计算趋势
+
         await collector.add(metric_value)
         recent = await collector.last(self.window_size)
 

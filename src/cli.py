@@ -209,6 +209,9 @@ def main():
             parser_mode=args.parser,
         )
     elif args.command == "config":
+        if args.config and args.create_default:
+            print("错误: --config 和 --create-default 不能同时使用")
+            return 1
         if args.create_default:
             create_config(args.output)
         elif args.show:

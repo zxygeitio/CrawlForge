@@ -212,27 +212,43 @@ class RedisQueueManager:
     # URL 去重
     def is_url_seen(self, url: str) -> bool:
         """检查URL是否已爬取"""
-        key = self._key("seen_urls")
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        return self.redis.sismember(key, url_hash)
+        try:
+            key = self._key("seen_urls")
+            url_hash = hashlib.md5(url.encode()).hexdigest()
+            return self.redis.sismember(key, url_hash)
+        except redis.exceptions.ConnectionError:
+            logger.warning("Redis unavailable, skipping URL dedup check")
+            return False  # 降级：未见过
 
     def check_and_mark_seen(self, url: str) -> bool:
         """原子地检查并标记 URL 已见。返回 True 表示是新 URL（已标记），False 表示已见过。"""
-        key = self._key("seen_urls")
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        # SETNX 返回 True 只有在 key 不存在时（即第一次设置）
-        return bool(self.redis.set(key, url_hash, nx=True))
+        try:
+            key = self._key("seen_urls")
+            url_hash = hashlib.md5(url.encode()).hexdigest()
+            # SETNX 返回 True 只有在 key 不存在时（即第一次设置）
+            return bool(self.redis.set(key, url_hash, nx=True))
+        except redis.exceptions.ConnectionError:
+            logger.warning("Redis unavailable, skipping URL dedup check")
+            return False  # 降级：未见过
 
     def mark_url_seen(self, url: str) -> bool:
         """标记URL已爬取"""
-        key = self._key("seen_urls")
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        return self.redis.sadd(key, url_hash) == 1
+        try:
+            key = self._key("seen_urls")
+            url_hash = hashlib.md5(url.encode()).hexdigest()
+            return self.redis.sadd(key, url_hash) == 1
+        except redis.exceptions.ConnectionError:
+            logger.warning("Redis unavailable, skipping URL mark")
+            return False  # 降级：标记失败
 
     def get_seen_count(self) -> int:
         """获取已爬取URL数量"""
-        key = self._key("seen_urls")
-        return self.redis.scard(key)
+        try:
+            key = self._key("seen_urls")
+            return self.redis.scard(key)
+        except redis.exceptions.ConnectionError:
+            logger.warning("Redis unavailable, returning 0 for seen count")
+            return 0  # 降级：返回0
 
     # 任务队列
     def push_task(self, url: str, priority: int = 0) -> bool:
@@ -298,7 +314,11 @@ class RedisQueueManager:
 
     def get_queue_size(self) -> int:
         """获取队列大小"""
-        return self.redis.llen(self._key("task_queue")) + self.redis.zcard(self._key("priority_queue"))
+        try:
+            return self.redis.llen(self._key("task_queue")) + self.redis.zcard(self._key("priority_queue"))
+        except redis.exceptions.ConnectionError:
+            logger.warning("Redis unavailable, returning 0 for queue size")
+            return 0  # 降级：返回0
 
     # 结果缓存
     def cache_result(self, url: str, result: dict, ttl: int = 3600):
@@ -354,11 +374,19 @@ class RedisQueueManager:
     # 统计
     def get_stats(self) -> dict:
         """获取统计信息"""
-        return {
-            "seen_urls": self.get_seen_count(),
-            "queue_size": self.get_queue_size(),
-            "redis_info": self.redis.info(),
-        }
+        try:
+            return {
+                "seen_urls": self.get_seen_count(),
+                "queue_size": self.get_queue_size(),
+                "redis_info": self.redis.info(),
+            }
+        except redis.exceptions.ConnectionError:
+            logger.warning("Redis unavailable, returning partial stats")
+            return {
+                "seen_urls": self.get_seen_count(),
+                "queue_size": self.get_queue_size(),
+                "redis_info": None,
+            }
 
 
 def start_worker(

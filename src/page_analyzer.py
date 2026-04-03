@@ -489,6 +489,9 @@ class SimpleAIPageAnalyzer:
 
         Returns:
             提取建议
+
+        Raises:
+            ValueError: 当提取方法建议失败时抛出
         """
         try:
             soup = BeautifulSoup(html, "html.parser")
@@ -505,7 +508,7 @@ class SimpleAIPageAnalyzer:
                     }
                 except (json.JSONDecodeError, TypeError) as e:
                     logging.warning(f"Invalid JSON-LD found: {e}")
-                    return {"method": "json_ld", "data": None, "error": "malformed JSON-LD"}
+                    raise ValueError(f"Malformed JSON-LD: {e}") from e
 
             # 检测Microdata
             itemscope = soup.find(attrs={"itemscope": True})
@@ -533,8 +536,10 @@ class SimpleAIPageAnalyzer:
 
             return {"method": "generic", "selector": "body"}
 
+        except ValueError:
+            raise
         except Exception as e:
-            return {"method": "error", "error": str(e)}
+            raise ValueError(f"Extraction method suggestion failed: {e}") from e
 
 
 # 示例用法
