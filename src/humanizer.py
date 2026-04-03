@@ -834,6 +834,8 @@ class KeyboardSimulator:
     - 大小写切换
     """
 
+    MAX_TEXT_LENGTH = 1000  # 单次输入最大长度限制
+
     def __init__(self):
         self.keystroke_delays: List[float] = []
         self.last_key_time = 0
@@ -877,6 +879,13 @@ class KeyboardSimulator:
         Returns:
             [{"key": "a", "press_time": t, "release_time": t+0.08}, ...]
         """
+        # 长度限制，防止内存问题
+        if len(text) > KeyboardSimulator.MAX_TEXT_LENGTH:
+            raise ValueError(
+                f"Text length {len(text)} exceeds maximum "
+                f"{KeyboardSimulator.MAX_TEXT_LENGTH}"
+            )
+
         simulator = KeyboardSimulator()
         sequence = []
         current_time = time.time()

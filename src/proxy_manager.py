@@ -240,10 +240,19 @@ class ProxyPoolManager:
 
     def _normalize_proxy_url(self, proxy_url: str) -> str:
         """标准化代理URL格式"""
-        # 支持的协议前缀
-        valid_prefixes = ('http://', 'https://', 'socks5://', 'socks4://')
-        if any(proxy_url.startswith(p) for p in valid_prefixes):
-            return proxy_url
+        if not proxy_url or not proxy_url.strip():
+            raise ValueError(f"Invalid proxy URL: empty or whitespace")
+
+        # 支持的协议前缀 (安全协议优先)
+        valid_prefixes = ('http://', 'https://', 'socks5://')
+        for prefix in valid_prefixes:
+            if proxy_url.startswith(prefix):
+                return proxy_url
+
+        # socks4已废弃，拒绝使用
+        if proxy_url.startswith('socks4://'):
+            raise ValueError("socks4 protocol is deprecated and insecure, use socks5:// instead")
+
         # 没有协议前缀，默认添加http://
         return f"http://{proxy_url}"
 

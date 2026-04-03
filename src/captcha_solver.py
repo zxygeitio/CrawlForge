@@ -270,6 +270,9 @@ class SliderCaptchaSolver(BaseCaptchaSolver):
         v = 0    # 初速度
         step = 0
 
+        # 自适应步长: 确保足够的步数到达目标
+        max_steps = max(1000, distance // 2)
+
         while current < distance:
             # 加速度: 前半段2, 后半段-3
             a = 2 if current < mid else -3
@@ -281,22 +284,22 @@ class SliderCaptchaSolver(BaseCaptchaSolver):
             current += move
 
             # Y轴随机抖动 (-2到2像素)
-            y_offset = random.randint(-2, 3)
+            y_offset = random.randint(-2, 2)
 
             # 时间戳
             timestamp = start_time + step * t
+
+            # 确保不超出目标距离
+            if current > distance:
+                current = distance
 
             track_list.append([round(current, 2), y_offset, round(timestamp, 4)])
 
             step += 1
 
             # 防止无限循环
-            if step > 500:
+            if step > max_steps:
                 break
-
-        # 确保到达终点
-        if track_list and track_list[-1][0] != distance:
-            track_list[-1][0] = distance
 
         return track_list
 
