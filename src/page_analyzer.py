@@ -6,10 +6,13 @@ AI页面分析器
 import base64
 import io
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Any
 from enum import Enum
+
+from bs4 import BeautifulSoup
 
 
 class CaptchaType(Enum):
@@ -220,16 +223,35 @@ class PageStructureAnalyzer:
 
         for captcha_type, selectors in self.CAPTCHA_SELECTORS.items():
             for selector in selectors:
-                if selector.replace(".", "").replace("#", "").replace("[", "").replace("]", "") in html_lower:
+                matched = False
+
+                if selector.startswith("."):
+                    # Class selector: 匹配完整的class属性值（词边界）
+                    class_name = selector[1:]
+                    # 匹配 class="xxx slider xxx" 或 class='xxx slider xxx'
+                    pattern = rf'''class=["'][^"']*\b{re.escape(class_name)}\b[^"']*["']'''
+                    if re.search(pattern, html_lower):
+                        matched = True
+                elif selector.startswith("#"):
+                    # ID selector: 匹配完整的id属性值
+                    id_name = selector[1:]
+                    pattern = rf'''id=["']\b{re.escape(id_name)}\b["']'''
+                    if re.search(pattern, html_lower):
+                        matched = True
+                elif selector.startswith("["):
+                    # 属性选择器 [attr*='value']: 转为正则
+                    # 提取属性名和值
+                    attr_match = re.match(r"\[([^=]+)[*~^$]?=['\"]([^'\"]+)['\"]\]", selector)
+                    if attr_match:
+                        attr, value = attr_match.groups()
+                        pattern = rf'''{re.escape(attr)}=["'][^"']*{re.escape(value)}[^"']*["']'''
+                        if re.search(pattern, html_lower):
+                            matched = True
+
+                if matched:
                     detected.append(captcha_type)
                     break
 
-                # 检查class/id包含
-                if "class=" in html_lower and selector.replace(".", "class=") in html_lower:
-                    detected.append(captcha_type)
-                    break
-
-        # 去重
         return list(set(detected))
 
     def _detect_anti_bot_measures(self, html: str) -> List[AntiBotMeasure]:
@@ -478,18 +500,22 @@ class SimpleAIPageAnalyzer:
         Returns:
             提取建议
         """
-        from bs4 import BeautifulSoup
-
         try:
             soup = BeautifulSoup(html, "html.parser")
 
             # 检测JSON-LD
             json_ld = soup.find("script", type="application/ld+json")
             if json_ld:
-                return {
-                    "method": "json_ld",
-                    "data": json_ld.string,
-                }
+                try:
+                    # 校验JSON合法性，防止畸形数据泄露
+                    json.loads(json_ld.string)
+                    return {
+                        "method": "json_ld",
+                        "data": json_ld.string,
+                    }
+                except (json.JSONDecodeError, TypeError) as e:
+                    logging.warning(f"Invalid JSON-LD found: {e}")
+                    return {"method": "json_ld", "data": None, "error": "malformed JSON-LD"}
 
             # 检测Microdata
             itemscope = soup.find(attrs={"itemscope": True})

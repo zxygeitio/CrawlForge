@@ -5,9 +5,11 @@ TLS指纹分析器
 
 import hashlib
 import json
+import logging
 import socket
 import struct
 import ssl
+import warnings
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
@@ -58,7 +60,7 @@ class TLSFingerprint:
     elliptic_curve_point_formats: List[int]
     supported_versions: List[str]
     session_tickets: bool
-    ssl_pucture: bool
+    ssl_structure: bool
 
 
 class JA3Calculator:
@@ -92,17 +94,15 @@ class JA3Calculator:
         0x002B: ("TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA", "strong"),
         0x002C: ("TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA", "strong"),
         0x0035: ("TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA", "strong"),
-        0xC00A: ("TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA", "strong"),
         0xC009: ("TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA", "strong"),
+        0xC00A: ("TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA", "strong"),
+        0xC012: ("TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA", "weak"),
         0xC013: ("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", "strong"),
         0xC014: ("TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA", "strong"),
-        0xC012: ("TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA", "weak"),
-        0xC02F: ("TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "strong"),
-        0xC030: ("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", "strong"),
         0xC02B: ("TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256", "strong"),
         0xC02E: ("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", "strong"),
-        0xC02F: ("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", "strong"),
-        0xC030: ("TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384", "strong"),
+        0xC02F: ("TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "strong"),
+        0xC030: ("TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", "strong"),
         0xCCA9: ("TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", "strong"),
         0xCCAA: ("TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", "strong"),
     }
@@ -395,7 +395,10 @@ class JA3Calculator:
             ext_count = f"{len(extensions):02d}"
 
             # 构建JA4
-            ja4 = f"{prefix}{version[0]}{version[1]}{first_cipher[:2]}{last_cipher[:2]}"
+            # JA4版本: TLS 1.3=(3,4)->"13", TLS 1.2=(3,3)->"12"
+            # major=version[0]-2 (3->1), minor=version[1]-1 (4->3, 3->2)
+            ja4_version = f"{version[0] - 2}{version[1] - 1}"
+            ja4 = f"{prefix}{ja4_version}{first_cipher[:2]}{last_cipher[:2]}"
             ja4 += f"_{ext_count}{first_cipher[2:]}"
 
             # 添加随机部分
@@ -459,28 +462,26 @@ class TLSFingerprintAnalyzer:
 
             with socket.create_connection((host, port), timeout=timeout) as sock:
                 with context.wrap_socket(sock, server_hostname=host) as ssock:
-                    # 获取选定的cipher和版本
                     cipher = ssock.cipher()
-                    print(f"[TLS] Connected to {host}:{port}")
-                    print(f"[TLS] Cipher: {cipher}")
-
-                    # 尝试发送ClientHello并获取响应
-                    # 这里主要获取服务器端hello
-                    pass
-
-            return None
+                    # 注意: 此处只能获取服务器端TLS信息
+                    # 完整的ClientHello指纹捕获需要mitmproxy
+                    return {
+                        "host": host,
+                        "port": port,
+                        "server_cipher": cipher,
+                    }
 
         except ssl.SSLError as e:
-            print(f"[TLS] SSL Error: {e}")
+            logging.warning(f"[TLS] SSL Error connecting to {host}:{port}: {e}")
             return None
         except socket.timeout:
-            print(f"[TLS] Connection timeout")
+            logging.warning(f"[TLS] Connection timeout for {host}:{port}")
             return None
         except socket.gaierror:
-            print(f"[TLS] DNS resolution failed")
+            logging.warning(f"[TLS] DNS resolution failed for {host}:{port}")
             return None
         except Exception as e:
-            print(f"[TLS] Connection error: {e}")
+            logging.warning(f"[TLS] Connection error for {host}:{port}: {e}")
             return None
 
     def analyze_from_url(self, url: str) -> Dict:
@@ -503,15 +504,25 @@ class TLSFingerprintAnalyzer:
 
     def analyze(self, host: str, port: int = 443) -> Dict:
         """
-        分析目标TLS指纹
+        分析目标TLS指纹 (已废弃)
+
+        .. deprecated::
+            此方法返回的是硬编码的Chrome TLS 1.3指纹，不代表任何实际目标。
+            真实TLS指纹分析请使用 :meth:`detect_tls_fingerprint`
 
         Args:
             host: 目标主机
             port: 端口
 
         Returns:
-            TLS指纹分析结果
+            TLS指纹分析结果（硬编码Chrome数据，非真实目标指纹）
         """
+        warnings.warn(
+            "TLSFingerprintAnalyzer.analyze() 返回硬编码Chrome TLS指纹，不代表实际目标。"
+            "如需真实TLS指纹分析，请使用 detect_tls_fingerprint() 函数。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         result = {
             "host": host,
             "port": port,
