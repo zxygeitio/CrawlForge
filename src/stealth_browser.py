@@ -933,7 +933,13 @@ class StealthBrowser:
 
     def close(self):
         """关闭浏览器"""
-        if self._browser:
-            self._browser.close()
-        if self._playwright:
-            self._playwright.stop()
+        try:
+            if self._browser:
+                self._browser.close()
+        finally:
+            self._browser = None
+        try:
+            if self._playwright:
+                self._playwright.stop()
+        finally:
+            self._playwright = None

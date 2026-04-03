@@ -25,7 +25,7 @@ import requests
 from curl_cffi import requests as curl_requests
 from playwright.sync_api import sync_playwright
 
-from src.proxy_manager import ProxyPoolManager, ProxyPoolConfig, ProxyStatus
+from src.proxy_manager import ProxyPoolManager, ProxyPoolConfig, ProxyStatus, SyncProxyPoolManager
 from src.rate_limiter import TokenBucket, SlidingWindowRateLimiter, MultiLimiter
 from src.stealth_browser import StealthBrowser, StealthConfig, STealth_JS_INJECT
 from src.js_hook_tools import JSHookManager

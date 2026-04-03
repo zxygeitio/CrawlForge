@@ -143,6 +143,7 @@ class MetricsCollector:
     async def count(self) -> int:
         """窗口内数据条数"""
         async with self._lock:
+            self._cleanup(time.time())
             return len(self._values)
 
     async def sum(self) -> float:
