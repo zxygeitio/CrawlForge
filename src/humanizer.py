@@ -894,14 +894,6 @@ class KeyboardSimulator:
                 f"{KeyboardSimulator.MAX_TEXT_LENGTH}"
             )
 
-        simulator = KeyboardSimulator()
-        if len(text) > simulator.MAX_TEXT_LENGTH:
-            raise ValueError(
-                f"Text length {len(text)} exceeds maximum "
-                f"{simulator.MAX_TEXT_LENGTH}"
-            )
-
-        simulator = KeyboardSimulator()
         sequence = []
         current_time = time.time()
 

@@ -853,7 +853,7 @@ class Monitor:
         ]
 
         for metric_name, value in metrics_to_check:
-            if value > 0:  # 只处理有效的指标
+            if value is not None:  # 0.0 是合法指标值，不跳过
                 alerts = await self.alert_manager.process_metric(metric_name, value)
                 if alerts:
                     await self.alert_manager.send_alerts(alerts)
