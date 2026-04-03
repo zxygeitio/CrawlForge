@@ -206,6 +206,8 @@ class AlertRule:
 
     def _can_trigger(self) -> bool:
         """检查是否在冷却期"""
+        if self.cooldown <= 0:
+            return True
         return time.time() - self._last_triggered >= self.cooldown
 
     def _triggered(self):
@@ -427,6 +429,7 @@ class FileChannel(NotificationChannel):
         super().__init__("file")
         self.file_path = file_path
         self._lock = asyncio.Lock()
+        self._logger = get_logger()
 
     async def send(self, alert: Alert) -> bool:
         """写入文件"""
@@ -436,7 +439,7 @@ class FileChannel(NotificationChannel):
                     f.write(json.dumps(alert.to_dict(), ensure_ascii=False) + "\n")
                 return True
             except Exception as e:
-                logger.warning(f"Failed to write alert to file {self.file_path}: {e}")
+                self._logger.warning(f"Failed to write alert to file {self.file_path}: {e}")
                 return False
 
 

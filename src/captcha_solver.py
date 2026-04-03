@@ -465,8 +465,8 @@ class ProtocolSliderCaptchaSolver(SliderCaptchaSolver):
             import requests
             self.session = requests.Session()
 
-        bg_bytes = self.session.get(self.bg_img_url).content
-        slice_bytes = self.session.get(self.slice_img_url).content
+        bg_bytes = self.session.get(self.bg_img_url, timeout=10).content
+        slice_bytes = self.session.get(self.slice_img_url, timeout=10).content
 
         return bg_bytes, slice_bytes
 
@@ -803,7 +803,8 @@ class GeeTestCaptchaSolver(BaseCaptchaSolver):
 
                     for x, y, _ in trajectory:
                         page.mouse.move(bbox["x"] + x, bbox["y"] + y)
-                        page.mouse.up()
+
+                    page.mouse.up()
 
                 return CaptchaResult(
                     solved=True,

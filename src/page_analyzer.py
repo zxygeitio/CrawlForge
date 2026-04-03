@@ -265,16 +265,6 @@ class PageStructureAnalyzer:
                     detected.append(measure)
                     break
 
-        # 检查Cloudflare特殊标记
-        if "cloudflare" in html_lower or "_cf_challenge" in html_lower:
-            if AntiBotMeasure.CLOUDFLARE not in detected:
-                detected.append(AntiBotMeasure.CLOUDFLARE)
-
-        # 检查Incapsula
-        if "incapsula" in html_lower or "_Incapsula_Resource" in html_lower:
-            if AntiBotMeasure.INCAPSULA not in detected:
-                detected.append(AntiBotMeasure.INCAPSULA)
-
         return list(set(detected))
 
     def _detect_content_type(self, html: str) -> str:

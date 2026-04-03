@@ -1013,7 +1013,10 @@ class JSHookManager:
             scripts = [cls.HOOKS.get(name, '') for name in hook_names]
             script = '\n'.join(scripts)
 
-        page.evaluate(script)
+        try:
+            page.evaluate(script)
+        except Exception as e:
+            logger.warning(f"JS hook evaluation failed: {e}")
         logger.debug(f"Installed hooks: {hook_names or 'all'}")
 
     @classmethod
@@ -1025,11 +1028,6 @@ class JSHookManager:
     def install_crypto_hook(cls, page):
         """安装加密Hook"""
         cls.install_hooks(page, ['crypto'])
-
-    @classmethod
-    def install_full_hook(cls, page):
-        """安装完整Hook (除slider外)"""
-        cls.install_hooks(page, ['network', 'crypto', 'storage', 'fingerprint', 'antidebug', 'device'])
 
     @classmethod
     def install_captcha_hook(cls, page):

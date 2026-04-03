@@ -44,9 +44,6 @@ def create_parser() -> argparse.ArgumentParser:
     crawl_parser.add_argument("-c", "--config", help="配置文件路径")
     crawl_parser.add_argument("--parser", default="json", choices=["json", "html", "text"],
                               help="解析方式")
-    crawl_parser.add_argument("--hooks", nargs="+",
-                              choices=["network", "crypto", "storage", "fingerprint", "antidebug", "slider"],
-                              help="安装的Hook")
 
     # config 命令
     config_parser = subparsers.add_parser("config", help="配置管理")
@@ -73,7 +70,6 @@ def crawl_url(
     output: Optional[str] = None,
     config_path: Optional[str] = None,
     parser_mode: str = "json",
-    hooks: Optional[list] = None,
 ):
     """爬取单个URL"""
     # 加载配置
@@ -206,7 +202,6 @@ def main():
             output=args.output,
             config_path=args.config,
             parser_mode=args.parser,
-            hooks=args.hooks,
         )
     elif args.command == "config":
         if args.create_default:
