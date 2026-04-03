@@ -18,16 +18,18 @@ CrawlForge is a production-ready Python web scraping framework built for challen
 
 | Feature | Description |
 |---------|-------------|
-| **TLS/JA3 Fingerprint Bypass** | Uses `curl_cffi` to impersonate real browser TLS signatures |
-| **Stealth Browser Automation** | Playwright-based browser with hidden automation flags removed |
-| **Human Behavior Simulation** | Mouse trajectory, random delays, scroll patterns |
+| **TLS/JA3/ JA4 Fingerprint Bypass** | Uses `curl_cffi` + TLS fingerprint analyzer |
+| **Stealth Browser Automation** | Playwright with 20+ anti-detection hooks |
+| **Human Behavior Simulation** | Mouse, touch, keyboard, scroll patterns |
 | **Proxy Pool Manager** | Built-in proxy rotation with health scoring |
-| **Adaptive Rate Limiting** | Token bucket + sliding window, auto-adjusts to server response |
-| **Captcha Solving** | Support for slider, image, and GeeTest captchas |
+| **Adaptive Rate Limiting** | Token bucket + sliding window, auto-adjusts |
+| **Captcha Solving** | Protocol-based slider + image captcha solver |
 | **Chrome DevTools MCP** | Control Chrome remotely via MCP protocol |
 | **Distributed Tasks** | Redis-based async task queue for scaling |
 | **Monitor & Alert** | Real-time metrics with webhook notifications |
-| **JS Hook Tools** | Intercept XHR/Fetch, CryptoJS, storage operations |
+| **JS Hook Tools** | 15+ hook categories: crypto, wasm, sw, ws, etc |
+| **AI Page Analyzer** | Structure analysis, captcha detection |
+| **TLS Fingerprint Analyzer** | JA3/JA4 calculator and target fingerprinting |
 
 ---
 
@@ -128,18 +130,20 @@ python -m src.cli shell
 ```
 CrawlForge/
 ├── src/
-│   ├── __init__.py            # 43 exports
+│   ├── __init__.py            # 50+ exports
 │   ├── advanced_crawler.py    # Core crawler
-│   ├── stealth_browser.py     # Playwright stealth wrapper
-│   ├── humanizer.py           # Human behavior simulation
+│   ├── stealth_browser.py     # 20+ anti-detection hooks
+│   ├── humanizer.py           # Mouse/touch/keyboard/scroll
 │   ├── proxy_manager.py       # Proxy pool with scoring
 │   ├── rate_limiter.py        # Adaptive rate limiting
-│   ├── captcha_solver.py      # Captcha solving
+│   ├── captcha_solver.py      # Protocol + browser captcha
 │   ├── config_manager.py      # YAML config loader
 │   ├── data_processor.py      # Data extraction & cleaning
 │   ├── monitor.py             # Metrics & alerts
 │   ├── distributed_tasks.py    # Redis task queue
-│   ├── js_hook_tools.py       # JS interception hooks
+│   ├── js_hook_tools.py       # 15+ hook categories
+│   ├── tls_fingerprint.py     # JA3/JA4 analyzer
+│   ├── page_analyzer.py       # AI page structure analyzer
 │   └── cli.py                 # CLI entry
 ├── tests/                     # 82 passing tests
 ├── demos/                     # Usage examples
