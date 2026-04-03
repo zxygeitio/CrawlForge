@@ -381,13 +381,13 @@ class AdvancedCrawler:
                 response = self._request_requests(method, url, **kwargs)
 
             if response and hasattr(response, 'status_code') and response.status_code == 200:
-                await asyncio.sleep(self.config.download_delay)
+                time.sleep(self.config.download_delay)
                 return response
 
             if attempt < self.config.retry_times - 1:
                 delay = self._exponential_backoff(attempt)
                 logger.warning(f"Retry {attempt + 1} after {delay}s for {url}...")
-                await asyncio.sleep(delay)
+                time.sleep(delay)
 
         return None
 
