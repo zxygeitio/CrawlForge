@@ -148,6 +148,46 @@ class ProxyPoolManager:
 
         return proxies[-1]
 
+    async def get_proxy_async(
+        self,
+        tags: dict = None,
+        prefer_high_score: bool = True
+    ) -> Optional[Proxy]:
+        """
+        异步获取最佳代理
+
+        Args:
+            tags: 代理标签要求
+            prefer_high_score: 是否优先高评分
+        """
+        async with self._lock:
+            candidates = []
+
+            for proxy in self.proxies.values():
+                if proxy.status == ProxyStatus.DEAD:
+                    continue
+
+                # 标签过滤
+                if tags:
+                    match = all(
+                        proxy.tags.get(k) == v
+                        for k, v in tags.items()
+                    )
+                    if not match:
+                        continue
+
+                candidates.append(proxy)
+
+            if not candidates:
+                return None
+
+            # 按评分排序
+            if prefer_high_score:
+                candidates.sort(key=lambda p: p.score, reverse=True)
+                return self._weighted_random_select(candidates)
+            else:
+                return random.choice(candidates)
+
     async def report_result(
         self,
         proxy_url: str,

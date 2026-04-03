@@ -470,15 +470,17 @@ class AdvancedCrawler:
         url_extractor: Callable[[Any], list],
         parser: Callable[[Any], dict],
         max_pages: int = 100,
-        max_concurrent: int = 5,
+        max_concurrent: int = None,
         use_method: RequestMethod = RequestMethod.ASYNC_CURL,
         **kwargs
     ) -> list:
         """异步爬取整站"""
+        # 使用config中的concurrent值作为默认值
+        concurrent_limit = max_concurrent or self.config.concurrent
         results = []
         pending_urls = [start_url]
         visited_urls = set()
-        semaphore = asyncio.Semaphore(max_concurrent)
+        semaphore = asyncio.Semaphore(concurrent_limit)
 
         async def crawl_one(url: str) -> Optional[dict]:
             async with semaphore:

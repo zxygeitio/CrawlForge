@@ -5,11 +5,14 @@
 
 import base64
 import io
+import logging
 import time
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Tuple, List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 
@@ -584,6 +587,8 @@ class ProtocolSliderCaptchaSolver(SliderCaptchaSolver):
         verify_url: str,
         captcha_id: str = None,
         encrypt_method: str = "getW",
+        retry_times: int = 3,
+        retry_delay: float = 1.0,
     ) -> Tuple[bool, Dict]:
         """
         执行完整的验证码破解流程
@@ -593,32 +598,49 @@ class ProtocolSliderCaptchaSolver(SliderCaptchaSolver):
             verify_url: 验证提交接口
             captcha_id: 验证码ID
             encrypt_method: JS加密方法名
+            retry_times: 最大重试次数
+            retry_delay: 重试间隔(秒)
 
         Returns:
             (是否成功, 响应数据)
         """
-        try:
-            # 1. 获取验证码资源
-            self.get_captcha_resource(load_url, captcha_id)
+        last_error = None
 
-            # 2. 下载图片
-            bg_bytes, slice_bytes = self.download_images()
+        for attempt in range(retry_times):
+            try:
+                # 1. 获取验证码资源
+                self.get_captcha_resource(load_url, captcha_id)
 
-            # 3. 图像识别计算距离
-            bg_image = Image.open(io.BytesIO(bg_bytes))
-            slice_image = Image.open(io.BytesIO(slice_bytes))
-            self.solve(bg_image)
+                # 2. 下载图片
+                bg_bytes, slice_bytes = self.download_images()
 
-            # 4. 生成加密参数w
-            if self.encrypt_js:
-                self.generate_encrypt_w(encrypt_method)
+                # 3. 图像识别计算距离
+                bg_image = Image.open(io.BytesIO(bg_bytes))
+                slice_image = Image.open(io.BytesIO(slice_bytes))
+                self.solve(bg_image)
 
-            # 5. 提交验证
-            return self.submit_verify_request(verify_url)
+                # 4. 生成加密参数w
+                if self.encrypt_js:
+                    self.generate_encrypt_w(encrypt_method)
 
-        except Exception as e:
-            print(f"破解流程执行失败: {str(e)}")
-            return False, {"error": str(e)}
+                # 5. 提交验证
+                success, response = self.submit_verify_request(verify_url)
+                if success:
+                    return True, response
+
+                # 验证失败，记录原因继续重试
+                last_error = f"验证失败: {response}"
+                logger.warning(f"验证码验证失败 (尝试 {attempt + 1}/{retry_times}): {response}")
+
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"破解流程异常 (尝试 {attempt + 1}/{retry_times}): {e}")
+
+            # 重试前等待
+            if attempt < retry_times - 1:
+                time.sleep(retry_delay)
+
+        return False, {"error": last_error or "验证码破解失败"}
 
 
 class ImageCaptchaSolver(BaseCaptchaSolver):

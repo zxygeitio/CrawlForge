@@ -88,6 +88,22 @@ class TokenBucket:
         self._refill()
         return int(self._tokens)
 
+    def acquire_sync(self, tokens: int = 1) -> bool:
+        """
+        同步获取令牌 (不等待)
+
+        Args:
+            tokens: 需要令牌数
+
+        Returns:
+            是否成功获取
+        """
+        self._refill()
+        if self._tokens >= tokens:
+            self._tokens -= tokens
+            return True
+        return False
+
 
 class SlidingWindowRateLimiter:
     """
