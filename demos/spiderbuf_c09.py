@@ -63,7 +63,7 @@ class SpiderBufC09Crawler:
             WebDriverWait(self.driver, 30).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "#items table tbody tr"))
             )
-        except:
+        except Exception:
             pass
 
         # 再等一下确保数据加载完成
@@ -110,7 +110,7 @@ class SpiderBufC09Crawler:
             try:
                 cpc_str = item["cpc"].replace("$", "").strip()
                 cpc_values.append(float(cpc_str))
-            except:
+            except Exception:
                 pass
 
         if not cpc_values:

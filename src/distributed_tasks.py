@@ -410,6 +410,7 @@ def start_worker(
         "celery",
         "-A", "src.distributed_tasks",
         "worker",
+        "--broker", broker_url,
         "--loglevel", loglevel,
         "--concurrency", str(concurrency),
         "--pool", "prefork",
