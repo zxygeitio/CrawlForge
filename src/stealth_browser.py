@@ -143,8 +143,8 @@ def get_stealth_context_args() -> dict:
         # 视口
         "viewport": {"width": 1920, "height": 1080},
 
-        # 不忽略证书错误(开发用)
-        "ignore_https_errors": True,
+        # 不忽略证书错误(生产用)
+        "ignore_https_errors": False,
     }
 
 

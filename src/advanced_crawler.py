@@ -229,7 +229,7 @@ class AdvancedCrawler:
             self.storage = SyncFileStorage(f"{self.config.name}_data.json")
 
     def _init_proxy_pool(self):
-        self.proxy_pool = ProxyPoolManager(
+        self.proxy_pool = SyncProxyPoolManager(
             ProxyPoolConfig(check_interval=self.config.proxy_check_interval)
         )
         for proxy in self.config.proxy_pool:

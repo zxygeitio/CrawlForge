@@ -181,6 +181,7 @@ class AdaptiveRateLimiter:
         self.increase_factor = increase_factor
         self.decrease_factor = decrease_factor
         self._bucket = TokenBucket(TokenBucketConfig(rate=initial_rate, capacity=int(initial_rate * 2)))
+        self._lock = asyncio.Lock()
 
     async def acquire(self, success: bool = True) -> bool:
         """
@@ -190,10 +191,11 @@ class AdaptiveRateLimiter:
             success: 请求是否成功
         """
         # 根据结果调整速率
-        if success:
-            self._increase_rate()
-        else:
-            self._decrease_rate()
+        async with self._lock:
+            if success:
+                self._increase_rate()
+            else:
+                self._decrease_rate()
 
         return await self._bucket.acquire()
 

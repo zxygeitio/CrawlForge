@@ -611,7 +611,7 @@ class HealthChecker:
     async def check_all(self) -> list[HealthCheckResult]:
         """检查所有组件"""
         tasks = [self.check(name) for name in self._components]
-        return await asyncio.gather(*tasks)
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
     def get_summary(self, results: list[HealthCheckResult]) -> HealthStatus:
         """获取总体健康状态"""
@@ -870,7 +870,7 @@ class Monitor:
                     timeout=self.check_interval,
                 )
             except asyncio.TimeoutError:
-                pass
+                self._logger.warning("Monitor check timed out")
             except Exception as e:
                 self._logger.error(f"Monitor loop error: {e}")
 

@@ -210,21 +210,22 @@ class TestProxyPoolManager:
 
     @pytest.mark.asyncio
     async def test_weighted_random_select(self, manager):
-        """测试加权随机选择"""
+        """测试加权随机选择（使用足够大的样本避免flaky）"""
         proxies = [
             Proxy(url="http://p1:8080", score=80.0),
             Proxy(url="http://p2:8080", score=60.0),
             Proxy(url="http://p3:8080", score=40.0),
         ]
 
-        # 多次选择验证概率分布
+        # 使用1000次采样，中心极限定理保证高频代理选中次数显著更高
         selected = {"http://p1:8080": 0, "http://p2:8080": 0, "http://p3:8080": 0}
-        for _ in range(100):
+        for _ in range(1000):
             result = manager._weighted_random_select(proxies)
             selected[result.url] += 1
 
-        # 高分代理被选中次数应该更多
-        assert selected["http://p1:8080"] > selected["http://p3:8080"]
+        # 高分代理(p1,80分)选中次数应显著高于低分代理(p3,40分)
+        # 期望比值约为2:1，容许30%波动
+        assert selected["http://p1:8080"] > selected["http://p3:8080"] * 1.3
 
 
 class TestSyncProxyPoolManager:
