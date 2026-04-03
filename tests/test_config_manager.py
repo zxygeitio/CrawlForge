@@ -50,11 +50,19 @@ class TestConfigManager:
             yield td
 
     @pytest.fixture
-    def manager(self):
+    def manager(self, temp_dir):
         """创建配置管理器实例"""
-        # 重置单例
+        # 重置单例，设置 CRAWLER_CONFIG_ROOT 使保存测试能写到 temp_dir
+        # （CRAWLER_CONFIG_ROOT 作为保存的目标根目录；加载时同样受其约束）
         ConfigManager._instance = None
-        return ConfigManager()
+        old_env = os.environ.get("CRAWLER_CONFIG_ROOT")
+        os.environ["CRAWLER_CONFIG_ROOT"] = temp_dir
+        mgr = ConfigManager()
+        yield mgr
+        if old_env is None:
+            os.environ.pop("CRAWLER_CONFIG_ROOT", None)
+        else:
+            os.environ["CRAWLER_CONFIG_ROOT"] = old_env
 
     @pytest.fixture
     def sample_yaml_config(self, temp_dir):
@@ -124,14 +132,14 @@ class TestConfigManager:
         assert config.concurrent == 5  # 默认值
 
     def test_load_yaml_file_not_found(self, manager):
-        """测试加载不存在的 YAML 文件"""
+        """测试加载不存在的 YAML 文件（路径在 cwd 内）"""
         with pytest.raises(FileNotFoundError):
-            manager.load_from_yaml("/nonexistent/config.yaml")
+            manager.load_from_yaml("nonexistent_dir/config.yaml")
 
     def test_load_json_file_not_found(self, manager):
-        """测试加载不存在的 JSON 文件"""
+        """测试加载不存在的 JSON 文件（路径在 cwd 内）"""
         with pytest.raises(FileNotFoundError):
-            manager.load_from_json("/nonexistent/config.json")
+            manager.load_from_json("nonexistent_dir/config.json")
 
     def test_get_config(self, manager):
         """测试获取配置"""
@@ -224,6 +232,42 @@ class TestConfigManager:
             assert manager.get_config().headless is False
         finally:
             os.environ.pop("CRAWLER_HEADLESS", None)
+
+
+    def test_path_traversal_yaml(self, manager, temp_dir):
+        """测试 YAML 加载时防止 path traversal"""
+        # 在 cwd（项目目录）内创建合法配置
+        legitimate_path = os.path.join(os.getcwd(), "tests", "legitimate_test_cfg.yaml")
+        os.makedirs(os.path.dirname(legitimate_path), exist_ok=True)
+        with open(legitimate_path, "w", encoding="utf-8") as f:
+            yaml.dump({"name": "legitimate"}, f)
+        try:
+            # 正常加载应该成功（路径在 cwd 内）
+            config = manager.load_from_yaml(legitimate_path)
+            assert config.name == "legitimate"
+
+            # 尝试 path traversal 应该被拒绝（逃逸 cwd）
+            bad_path = os.path.join(temp_dir, "..", "..", "etc", "passwd")
+            with pytest.raises(ValueError, match="Path traversal attempt detected"):
+                manager.load_from_yaml(bad_path)
+        finally:
+            os.unlink(legitimate_path)
+
+    def test_path_traversal_json(self, manager, temp_dir):
+        """测试 JSON 加载时防止 path traversal"""
+        # 尝试 path traversal 应该被拒绝
+        bad_path = os.path.join(temp_dir, "..", "..", "etc", "passwd")
+        with pytest.raises(ValueError, match="Path traversal attempt detected"):
+            manager.load_from_json(bad_path)
+
+    def test_path_traversal_save(self, manager, temp_dir):
+        """测试保存时防止 path traversal"""
+        manager.load_from_dict({"name": "save_test", "timeout": 30})
+
+        # 尝试保存到允许目录之外应该被拒绝
+        bad_path = os.path.join(temp_dir, "..", "..", "tmp", "evil.yaml")
+        with pytest.raises(ValueError, match="Path traversal attempt detected"):
+            manager.save_to_yaml(bad_path)
 
 
 class TestCreateDefaultConfig:

@@ -79,10 +79,53 @@ class ConfigManager:
         """获取单例实例"""
         return cls()
 
-    def load_from_yaml(self, path: str) -> CrawlerConfig:
-        """从 YAML 文件加载配置"""
+    def _validate_path(self, path: str, base_dir: str = None) -> str:
+        """
+        验证路径安全，防止 path traversal 攻击。
+
+        Args:
+            path: 用户提供的路径
+            base_dir: 允许的基础目录。
+                     - None: 加载时使用 cwd，保存时由调用者传入目标父目录
+
+        Returns:
+            经验证的绝对路径
+
+        Raises:
+            ValueError: 路径超出允许范围（包含 .. 逃逸）
+        """
+        # 展开用户和环境变量
         path = os.path.expanduser(path)
         path = os.path.expandvars(path)
+
+        # 先规范化（解析 .. 等），再转绝对路径
+        normalized = os.path.normpath(path)
+        abs_path = os.path.abspath(normalized)
+
+        # 确定允许的基础目录
+        if base_dir is None:
+            # 加载配置：默认以 cwd 为基准，防止逃逸到系统目录如 /etc、C:\Windows
+            # 生产环境建议通过 CRAWLER_CONFIG_ROOT 环境变量显式指定安全根目录
+            base_dir = os.environ.get(
+                "CRAWLER_CONFIG_ROOT",
+                os.getcwd()
+            )
+        abs_base = os.path.abspath(base_dir)
+
+        # 仅当规范化路径包含 .. 时（即用户试图逃逸）才检查 containment
+        # 纯绝对路径（如 D:\nonexistent\cfg.yaml）不在此处拦截，由文件存在性检查处理
+        has_traversal = ".." in path  # 检查原始路径中的 .. 逃逸（normpath 会消除 ..，所以提前检查）
+        if has_traversal and not abs_path.startswith(abs_base + os.sep) and abs_path != abs_base:
+            raise ValueError(
+                f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                f"which is outside allowed directory '{abs_base}'"
+            )
+
+        return abs_path
+
+    def load_from_yaml(self, path: str) -> CrawlerConfig:
+        """从 YAML 文件加载配置"""
+        path = self._validate_path(path)
 
         if not os.path.exists(path):
             raise FileNotFoundError(f"Config file not found: {path}")
@@ -96,8 +139,7 @@ class ConfigManager:
 
     def load_from_json(self, path: str) -> CrawlerConfig:
         """从 JSON 文件加载配置"""
-        path = os.path.expanduser(path)
-        path = os.path.expandvars(path)
+        path = self._validate_path(path)
 
         if not os.path.exists(path):
             raise FileNotFoundError(f"Config file not found: {path}")
@@ -185,7 +227,38 @@ class ConfigManager:
         if self._config is None:
             raise RuntimeError("No config to save")
 
-        path = os.path.expanduser(path)
+        # 展开路径后规范化，用 relpath 判断是否逃逸 cwd 或 CRAWLER_CONFIG_ROOT
+        # CRAWLER_CONFIG_ROOT 允许跨盘符保存（如 save 到 /tmp 或 C:\Temp）
+        expanded = os.path.expanduser(os.path.expandvars(path))
+        normalized = os.path.normpath(expanded)
+        abs_path = os.path.abspath(normalized)
+        base = os.environ.get("CRAWLER_CONFIG_ROOT", os.getcwd())
+        try:
+            rel = os.path.relpath(abs_path, base)
+            if rel.startswith(".."):
+                raise ValueError(
+                    f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                    f"which is outside the allowed directory '{base}'"
+                )
+        except ValueError:
+            # 跨盘符：使用 commonpath 判断 target 是否在 base 的子树外
+            # （Unix 上 cwd=/project, target=/tmp → commonpath=/, relpath=../../tmp）
+            try:
+                common = os.path.commonpath([abs_path, base])
+                # 如果 target 的父目录（base）与 base 完全无关，说明是跨盘符逃逸
+                if not abs_path.startswith(base + os.sep) and abs_path != base:
+                    raise ValueError(
+                        f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                        f"which is outside the allowed directory '{base}'"
+                    )
+            except ValueError:
+                # commonpath 在跨盘符时抛 ValueError → 拒绝
+                raise ValueError(
+                    f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                    f"which is outside the allowed directory '{base}'"
+                )
+
+        path = self._validate_path(path, base_dir=base)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "w", encoding="utf-8") as f:
@@ -196,7 +269,34 @@ class ConfigManager:
         if self._config is None:
             raise RuntimeError("No config to save")
 
-        path = os.path.expanduser(path)
+        # 展开路径后规范化，用 relpath 判断是否逃逸 cwd 或 CRAWLER_CONFIG_ROOT
+        expanded = os.path.expanduser(os.path.expandvars(path))
+        normalized = os.path.normpath(expanded)
+        abs_path = os.path.abspath(normalized)
+        base = os.environ.get("CRAWLER_CONFIG_ROOT", os.getcwd())
+        try:
+            rel = os.path.relpath(abs_path, base)
+            if rel.startswith(".."):
+                raise ValueError(
+                    f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                    f"which is outside the allowed directory '{base}'"
+                )
+        except ValueError:
+            # 跨盘符：使用 commonpath 判断 target 是否在 base 的子树外
+            try:
+                common = os.path.commonpath([abs_path, base])
+                if not abs_path.startswith(base + os.sep) and abs_path != base:
+                    raise ValueError(
+                        f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                        f"which is outside the allowed directory '{base}'"
+                    )
+            except ValueError:
+                raise ValueError(
+                    f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
+                    f"which is outside the allowed directory '{base}'"
+                )
+
+        path = self._validate_path(path, base_dir=base)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "w", encoding="utf-8") as f:
@@ -206,27 +306,39 @@ class ConfigManager:
 def create_default_config(path: str = "config.yaml"):
     """创建默认配置文件"""
     default_config = CrawlerConfig()
-    manager = ConfigManager()
-    manager.load_from_dict({
-        "name": default_config.name,
-        "timeout": default_config.timeout,
-        "retry_times": default_config.retry_times,
-        "retry_delay": default_config.retry_delay,
-        "download_delay": default_config.download_delay,
-        "concurrent": default_config.concurrent,
-        "headless": default_config.headless,
-        "user_agent": default_config.user_agent,
-        "proxy_pool": default_config.proxy_pool,
-        "proxy_enabled": default_config.proxy_enabled,
-        "proxy_check_interval": default_config.proxy_check_interval,
-        "storage_type": default_config.storage_type,
-        "storage_url": default_config.storage_url,
-        "rate_limit": default_config.rate_limit,
-        "enable_rate_limit": default_config.enable_rate_limit,
-        "use_tls_bypass": default_config.use_tls_bypass,
-        "use_stealth_browser": default_config.use_stealth_browser,
-        "log_level": default_config.log_level,
-        "log_file": default_config.log_file,
-    })
-    manager.save_to_yaml(path)
+    # 设置 CRAWLER_CONFIG_ROOT 到目标文件所在目录，允许跨盘符保存
+    expanded = os.path.expanduser(os.path.expandvars(path))
+    normalized = os.path.normpath(expanded)
+    abs_path = os.path.abspath(normalized)
+    old_root = os.environ.get("CRAWLER_CONFIG_ROOT")
+    os.environ["CRAWLER_CONFIG_ROOT"] = os.path.dirname(abs_path)
+    try:
+        manager = ConfigManager()
+        manager.load_from_dict({
+            "name": default_config.name,
+            "timeout": default_config.timeout,
+            "retry_times": default_config.retry_times,
+            "retry_delay": default_config.retry_delay,
+            "download_delay": default_config.download_delay,
+            "concurrent": default_config.concurrent,
+            "headless": default_config.headless,
+            "user_agent": default_config.user_agent,
+            "proxy_pool": default_config.proxy_pool,
+            "proxy_enabled": default_config.proxy_enabled,
+            "proxy_check_interval": default_config.proxy_check_interval,
+            "storage_type": default_config.storage_type,
+            "storage_url": default_config.storage_url,
+            "rate_limit": default_config.rate_limit,
+            "enable_rate_limit": default_config.enable_rate_limit,
+            "use_tls_bypass": default_config.use_tls_bypass,
+            "use_stealth_browser": default_config.use_stealth_browser,
+            "log_level": default_config.log_level,
+            "log_file": default_config.log_file,
+        })
+        manager.save_to_yaml(path)
+    finally:
+        if old_root is None:
+            os.environ.pop("CRAWLER_CONFIG_ROOT", None)
+        else:
+            os.environ["CRAWLER_CONFIG_ROOT"] = old_root
     return path
