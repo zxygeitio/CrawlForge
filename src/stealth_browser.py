@@ -849,6 +849,12 @@ class StealthBrowser:
         """启动隐身浏览器"""
         from playwright.sync_api import sync_playwright
 
+        # 关闭旧实例防止资源泄漏
+        if self._browser:
+            self._browser.close()
+        if self._playwright:
+            self._playwright.stop()
+
         self._playwright = sync_playwright().start()
 
         args = get_stealth_browser_args()
@@ -864,12 +870,15 @@ class StealthBrowser:
             else:
                 args.append(f"--proxy-server={server}")
 
-        self._browser = self._playwright.chromium.launch(
-            headless=self.config.headless,
-            args=args
-        )
-
-        return self._browser
+        try:
+            self._browser = self._playwright.chromium.launch(
+                headless=self.config.headless,
+                args=args
+            )
+            return self._browser
+        except Exception:
+            self._playwright.stop()
+            raise
 
     def create_context(self) -> BrowserContext:
         """创建隐身上下文"""

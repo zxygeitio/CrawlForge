@@ -243,13 +243,17 @@ class MultiLimiter:
 
         # 再检查域名
         if domain:
+            # 获取domain锁，在锁内快速检查/创建TokenBucket
             async with self._lock:
-                if domain not in self._domains:
-                    self._domains[domain] = TokenBucket(
+                domain_bucket = self._domains.get(domain)
+                if domain_bucket is None:
+                    domain_bucket = TokenBucket(
                         TokenBucketConfig(rate=10, capacity=20)
                     )
+                    self._domains[domain] = domain_bucket
 
-            if not await self._domains[domain].acquire(tokens):
+            # 释放domain锁后，再对TokenBucket执行acquire
+            if not await domain_bucket.acquire(tokens):
                 return False
 
         return True

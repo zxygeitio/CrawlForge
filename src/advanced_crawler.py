@@ -381,13 +381,13 @@ class AdvancedCrawler:
                 response = self._request_requests(method, url, **kwargs)
 
             if response and hasattr(response, 'status_code') and response.status_code == 200:
-                time.sleep(self.config.download_delay)
+                await asyncio.sleep(self.config.download_delay)
                 return response
 
             if attempt < self.config.retry_times - 1:
                 delay = self._exponential_backoff(attempt)
                 logger.warning(f"Retry {attempt + 1} after {delay}s for {url}...")
-                time.sleep(delay)
+                await asyncio.sleep(delay)
 
         return None
 
@@ -521,6 +521,8 @@ class AdvancedCrawler:
 
     def close(self):
         """关闭资源"""
+        if hasattr(self, '_session') and self._session:
+            self._session.close()
         if self.stealth_browser:
             self.stealth_browser.close()
         if hasattr(self.proxy_pool, 'stop_health_checker'):

@@ -205,6 +205,13 @@ class RedisQueueManager:
         url_hash = hashlib.md5(url.encode()).hexdigest()
         return self.redis.sismember(key, url_hash)
 
+    def check_and_mark_seen(self, url: str) -> bool:
+        """原子地检查并标记 URL 已见。返回 True 表示是新 URL（已标记），False 表示已见过。"""
+        key = self._key("seen_urls")
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        # SETNX 返回 True 只有在 key 不存在时（即第一次设置）
+        return bool(self.redis.set(key, url_hash, nx=True))
+
     def mark_url_seen(self, url: str) -> bool:
         """标记URL已爬取"""
         key = self._key("seen_urls")
@@ -302,24 +309,36 @@ class RedisQueueManager:
         return json.loads(data) if data else None
 
     # 分布式锁
-    def acquire_lock(self, name: str, timeout: int = 10) -> bool:
+    def acquire_lock(self, name: str, timeout: int = 10, owner: str = None) -> bool:
         """
         获取分布式锁
 
         Args:
             name: 锁名称
             timeout: 超时时间
+            owner: 锁持有者标识（默认为 id(self)）
 
         Returns:
             是否获取成功
         """
         key = self._key(f"lock:{name}")
-        return bool(self.redis.set(key, "1", nx=True, ex=timeout))
+        owner = owner or str(id(self))
+        return bool(self.redis.set(key, owner, nx=True, ex=timeout))
 
-    def release_lock(self, name: str):
-        """释放锁"""
+    def release_lock(self, name: str, owner: str = None):
+        """释放锁（仅持有者可释放）"""
         key = self._key(f"lock:{name}")
-        self.redis.delete(key)
+        if owner is None:
+            owner = str(id(self))
+        # 使用 Lua 脚本原子检查 owner 并删除
+        lua = """
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+            return redis.call('DEL', KEYS[1])
+        else
+            return 0
+        end
+        """
+        self.redis.eval(lua, 1, key, owner)
 
     # 统计
     def get_stats(self) -> dict:
