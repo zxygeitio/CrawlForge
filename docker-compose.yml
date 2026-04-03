@@ -1,0 +1,173 @@
+# ================================================
+# 爬虫逆向框架 - Docker Compose 配置
+# 开发/生产环境切换通过 COMPOSE_PROFILE 实现
+# ================================================
+
+services:
+  # -------- 主爬虫服务 --------
+  crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crawler_app
+    restart: unless-stopped
+    profiles:
+      - dev
+      - prod
+    ports:
+      - "8000:8000"
+    environment:
+      # 环境模式
+      - ENV=${ENV:-development}
+      # Redis 配置
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # MongoDB 配置
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=${MONGODB_PORT:-27017}
+      - MONGODB_DB=${MONGODB_DB:-crawler}
+      - MONGODB_USER=${MONGODB_USER:-}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD:-}
+      # 爬虫配置
+      - CONCURRENT=${CONCURRENT:-5}
+      - DOWNLOAD_DELAY=${DOWNLOAD_DELAY:-1.0}
+      - RATE_LIMIT=${RATE_LIMIT:-10.0}
+      - RETRY_TIMES=${RETRY_TIMES:-3}
+      - TIMEOUT=${TIMEOUT:-30}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # 代理配置
+      - PROXY_ENABLED=${PROXY_ENABLED:-false}
+      - PROXY_POOL=${PROXY_POOL:-}
+      # 存储配置
+      - STORAGE_TYPE=${STORAGE_TYPE:-file}
+      - STORAGE_URL=${STORAGE_URL:-}
+    volumes:
+      # 挂载本地代码（开发模式）
+      - ./src:/app/src:ro
+      - ./core:/app/core:ro
+      - ./extractors:/app/extractors:ro
+      - ./handlers:/app/handlers:ro
+      - ./utils:/app/utils:ro
+      # 日志目录
+      - ./logs:/app/logs
+      # 数据持久化
+      - crawler_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # -------- Redis 缓存服务 --------
+  redis:
+    image: redis:7-alpine
+    container_name: crawler_redis
+    restart: unless-stopped
+    profiles:
+      - dev
+      - prod
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    networks:
+      - crawler_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "app=crawler"
+      - "component=redis"
+
+  # -------- MongoDB 数据库服务 --------
+  mongodb:
+    image: mongo:7
+    container_name: crawler_mongodb
+    restart: unless-stopped
+    profiles:
+      - dev
+      - prod
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGODB_DB:-crawler}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USER:-}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD:-}
+    volumes:
+      - mongodb_data:/data/db
+      # 初始化脚本目录
+      - ./docker/mongo/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - crawler_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "app=crawler"
+      - "component=mongodb"
+
+  # -------- 开发模式专用服务 --------
+  crawler-dev-tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crawler_dev_tools
+    profiles:
+      - dev
+    command: ["python", "-m", "pytest", "--watch"]
+    environment:
+      - ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+    volumes:
+      - .:/app
+      - ./test_results:/app/test_results
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    stdin_open: true
+    tty: true
+
+# -------- 网络定义 --------
+networks:
+  crawler_network:
+    driver: bridge
+    name: crawler_network
+
+# -------- 持久化卷定义 --------
+volumes:
+  redis_data:
+    name: crawler_redis_data
+  mongodb_data:
+    name: crawler_mongodb_data
+  crawler_data:
+    name: crawler_data

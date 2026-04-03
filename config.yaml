@@ -1,0 +1,20 @@
+concurrent: 5
+download_delay: 1.0
+enable_rate_limit: true
+headless: true
+log_file: null
+log_level: INFO
+name: crawler
+proxy_check_interval: 300
+proxy_enabled: false
+proxy_pool: []
+rate_limit: 10.0
+retry_delay: 1.0
+retry_times: 3
+storage_type: file
+storage_url: ''
+timeout: 30
+use_stealth_browser: true
+use_tls_bypass: true
+user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
+  Gecko) Chrome/120.0.0.0 Safari/537.36

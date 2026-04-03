@@ -1,0 +1,96 @@
+{
+  "cpc_average": 33.3,
+  "count": 10,
+  "data": [
+    {
+      "index": "1",
+      "keyword": "life insurance policies",
+      "cpc": "45.6",
+      "monthly": "49500",
+      "competition": "high",
+      "industry": "Insurance",
+      "source": "SEMrush"
+    },
+    {
+      "index": "2",
+      "keyword": "mesothelioma attorney",
+      "cpc": "55.3",
+      "monthly": "8100",
+      "competition": "high",
+      "industry": "Legal Services",
+      "source": "Ahrefs"
+    },
+    {
+      "index": "3",
+      "keyword": "home equity loans",
+      "cpc": "37.25",
+      "monthly": "40500",
+      "competition": "medium",
+      "industry": "Finance",
+      "source": "Google Ads Keyword Planner"
+    },
+    {
+      "index": "4",
+      "keyword": "data analytics courses",
+      "cpc": "33.15",
+      "monthly": "15100",
+      "competition": "high",
+      "industry": "Education",
+      "source": "SEMrush"
+    },
+    {
+      "index": "5",
+      "keyword": "enterprise software solutions",
+      "cpc": "30.7",
+      "monthly": "13200",
+      "competition": "medium",
+      "industry": "Technology",
+      "source": "Ahrefs"
+    },
+    {
+      "index": "6",
+      "keyword": "small business loans",
+      "cpc": "28.4",
+      "monthly": "30100",
+      "competition": "high",
+      "industry": "Finance",
+      "source": "Google Ads Keyword Planner"
+    },
+    {
+      "index": "7",
+      "keyword": "managed it services",
+      "cpc": "26.85",
+      "monthly": "16500",
+      "competition": "medium",
+      "industry": "Technology",
+      "source": "SEMrush"
+    },
+    {
+      "index": "8",
+      "keyword": "commercial real estate",
+      "cpc": "24.6",
+      "monthly": "18100",
+      "competition": "high",
+      "industry": "Real Estate",
+      "source": "Ahrefs"
+    },
+    {
+      "index": "9",
+      "keyword": "telemedicine services",
+      "cpc": "21.9",
+      "monthly": "20100",
+      "competition": "medium",
+      "industry": "Healthcare",
+      "source": "Google Ads Keyword Planner"
+    },
+    {
+      "index": "10",
+      "keyword": "erp software",
+      "cpc": "29.25",
+      "monthly": "14100",
+      "competition": "high",
+      "industry": "Technology",
+      "source": "SEMrush"
+    }
+  ]
+}

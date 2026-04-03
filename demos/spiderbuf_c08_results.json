@@ -1,0 +1,86 @@
+{
+  "price_average": 65.9,
+  "count": 10,
+  "data": [
+    {
+      "index": "1",
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "price": "83",
+      "change": "1.23",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "2",
+      "symbol": "MSFT",
+      "name": "Microsoft Corporation",
+      "price": "90",
+      "change": "-0.45",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "3",
+      "symbol": "GOOGL",
+      "name": "Alphabet Inc.",
+      "price": "80",
+      "change": "0.87",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "4",
+      "symbol": "AMZN",
+      "name": "Amazon.com, Inc.",
+      "price": "24",
+      "change": "2.11",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "5",
+      "symbol": "NVDA",
+      "name": "NVIDIA Corporation",
+      "price": "54",
+      "change": "3.45",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "6",
+      "symbol": "TSLA",
+      "name": "Tesla, Inc.",
+      "price": "70",
+      "change": "-1.89",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "7",
+      "symbol": "META",
+      "name": "Meta Platforms, Inc.",
+      "price": "26",
+      "change": "0.56",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "8",
+      "symbol": "JPM",
+      "name": "JPMorgan Chase & Co.",
+      "price": "74",
+      "change": "0.33",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "9",
+      "symbol": "V",
+      "name": "Visa Inc.",
+      "price": "53",
+      "change": "-0.12",
+      "source": "Yahoo! Finance"
+    },
+    {
+      "index": "10",
+      "symbol": "MA",
+      "name": "Mastercard Incorporated",
+      "price": "105",
+      "change": "0.78",
+      "source": "Yahoo! Finance"
+    }
+  ]
+}

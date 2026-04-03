@@ -1,0 +1,55 @@
+{
+  "total": 6595,
+  "data": [
+    {
+      "no": "1",
+      "model": "MacBook Air (M4)",
+      "screen": "13.6\"",
+      "chip": "M4",
+      "memory": "16GB",
+      "storage": "256GB",
+      "price": "999",
+      "currency": "USD"
+    },
+    {
+      "no": "2",
+      "model": "MacBook Air (M4)",
+      "screen": "13.6\"",
+      "chip": "M4",
+      "memory": "16GB",
+      "storage": "512GB",
+      "price": "1199",
+      "currency": "USD"
+    },
+    {
+      "no": "3",
+      "model": "MacBook Air (M4)",
+      "screen": "15.3\"",
+      "chip": "M4",
+      "memory": "16GB",
+      "storage": "256GB",
+      "price": "1299",
+      "currency": "USD"
+    },
+    {
+      "no": "4",
+      "model": "MacBook Air (M4)",
+      "screen": "15.3\"",
+      "chip": "M4",
+      "memory": "16GB",
+      "storage": "512GB",
+      "price": "1499",
+      "currency": "USD"
+    },
+    {
+      "no": "5",
+      "model": "MacBook Pro (M4)",
+      "screen": "14.2\"",
+      "chip": "M4",
+      "memory": "16GB",
+      "storage": "512GB",
+      "price": "1599",
+      "currency": "USD"
+    }
+  ]
+}

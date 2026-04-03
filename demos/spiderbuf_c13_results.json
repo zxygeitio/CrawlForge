@@ -1,0 +1,86 @@
+{
+  "cpc_average": 315.88,
+  "count": 20,
+  "data": [
+    {
+      "keyword": "car insurance quotes",
+      "cpc": "1350.2"
+    },
+    {
+      "keyword": "personal injury lawyer",
+      "cpc": "740.16"
+    },
+    {
+      "keyword": "mortgage refinance rates",
+      "cpc": "605.31"
+    },
+    {
+      "keyword": "online mba programs",
+      "cpc": "219.71"
+    },
+    {
+      "keyword": "cloud computing services",
+      "cpc": "179.99"
+    },
+    {
+      "keyword": "credit card processing",
+      "cpc": "270.73"
+    },
+    {
+      "keyword": "cybersecurity solutions",
+      "cpc": "147.95"
+    },
+    {
+      "keyword": "luxury real estate",
+      "cpc": "99.09"
+    },
+    {
+      "keyword": "business voip services",
+      "cpc": "121.14"
+    },
+    {
+      "keyword": "dental implants cost",
+      "cpc": "331.12"
+    },
+    {
+      "keyword": "life insurance policies",
+      "cpc": "495.21"
+    },
+    {
+      "keyword": "mesothelioma attorney",
+      "cpc": "80.83"
+    },
+    {
+      "keyword": "home equity loans",
+      "cpc": "404.65"
+    },
+    {
+      "keyword": "data analytics courses",
+      "cpc": "150.69"
+    },
+    {
+      "keyword": "enterprise software solutions",
+      "cpc": "131.98"
+    },
+    {
+      "keyword": "small business loans",
+      "cpc": "300.88"
+    },
+    {
+      "keyword": "managed it services",
+      "cpc": "164.94"
+    },
+    {
+      "keyword": "commercial real estate",
+      "cpc": "180.92"
+    },
+    {
+      "keyword": "telemedicine services",
+      "cpc": "201.13"
+    },
+    {
+      "keyword": "erp software",
+      "cpc": "140.89"
+    }
+  ]
+}
