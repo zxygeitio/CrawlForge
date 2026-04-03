@@ -471,15 +471,15 @@ class WebhookChannel(NotificationChannel):
         """发送Webhook通知"""
         try:
             payload = self._build_payload(alert)
-            async with asyncio.timeout(10):
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.url,
-                        json=payload,
-                        headers={"Content-Type": "application/json"},
-                    ) as resp:
-                        return resp.status == 200
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    return resp.status == 200
         except Exception:
             return False
 

@@ -227,7 +227,8 @@ class MultiLimiter:
     def __init__(self):
         self._global = TokenBucket(TokenBucketConfig(rate=50, capacity=100))
         self._domains: Dict[str, TokenBucket] = {}
-        self._lock = asyncio.Lock()
+        self._domain_locks: Dict[str, asyncio.Lock] = {}
+        self._global_lock = asyncio.Lock()
 
     async def acquire(self, domain: str = None, tokens: int = 1) -> bool:
         """
@@ -241,20 +242,15 @@ class MultiLimiter:
         if not await self._global.acquire(tokens):
             return False
 
-        # 再检查域名
+        # 再检查域名 (使用per-domain lock防止竞态)
         if domain:
-            # 获取domain锁，在锁内快速检查/创建TokenBucket
-            async with self._lock:
-                domain_bucket = self._domains.get(domain)
-                if domain_bucket is None:
-                    domain_bucket = TokenBucket(
-                        TokenBucketConfig(rate=10, capacity=20)
-                    )
-                    self._domains[domain] = domain_bucket
-
-            # 释放domain锁后，再对TokenBucket执行acquire
-            if not await domain_bucket.acquire(tokens):
-                return False
+            domain_lock = self._domain_locks.setdefault(domain, asyncio.Lock())
+            async with domain_lock:
+                bucket = self._domains.get(domain)
+                if bucket is None:
+                    bucket = TokenBucket(TokenBucketConfig(rate=10, capacity=20))
+                    self._domains[domain] = bucket
+                return await bucket.acquire(tokens)
 
         return True
 

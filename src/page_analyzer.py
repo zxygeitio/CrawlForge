@@ -171,6 +171,31 @@ class PageStructureAnalyzer:
 
     def __init__(self):
         self.analysis_cache: Dict[str, PageAnalysis] = {}
+        self._compiled_captcha_selectors = self._build_compiled_selectors()
+
+    def _build_compiled_selectors(self) -> Dict[CaptchaType, List[tuple]]:
+        """预编译验证码检测正则，避免每次调用重复编译"""
+        compiled = {}
+        attr_re = re.compile(r"\[([^=]+)[*~^$]?=['\"]([^'\"]+)['\"]\]")
+        for captcha_type, selectors in self.CAPTCHA_SELECTORS.items():
+            patterns = []
+            for selector in selectors:
+                if selector.startswith("."):
+                    class_name = selector[1:]
+                    pattern = rf'''class=["'][^"']*\b{re.escape(class_name)}\b[^"']*["']'''
+                    patterns.append(("class", re.compile(pattern, re.IGNORECASE)))
+                elif selector.startswith("#"):
+                    id_name = selector[1:]
+                    pattern = rf'''id=["']\b{re.escape(id_name)}\b["']'''
+                    patterns.append(("id", re.compile(pattern, re.IGNORECASE)))
+                elif selector.startswith("["):
+                    attr_match = attr_re.match(selector)
+                    if attr_match:
+                        attr, value = attr_match.groups()
+                        pattern = rf'''{re.escape(attr)}=["'][^"']*{re.escape(value)}[^"']*["']'''
+                        patterns.append(("attr", re.compile(pattern, re.IGNORECASE)))
+            compiled[captcha_type] = patterns
+        return compiled
 
     def analyze_html(self, html: str, url: str = "") -> PageAnalysis:
         """
@@ -221,34 +246,9 @@ class PageStructureAnalyzer:
         detected = []
         html_lower = html.lower()
 
-        for captcha_type, selectors in self.CAPTCHA_SELECTORS.items():
-            for selector in selectors:
-                matched = False
-
-                if selector.startswith("."):
-                    # Class selector: 匹配完整的class属性值（词边界）
-                    class_name = selector[1:]
-                    # 匹配 class="xxx slider xxx" 或 class='xxx slider xxx'
-                    pattern = rf'''class=["'][^"']*\b{re.escape(class_name)}\b[^"']*["']'''
-                    if re.search(pattern, html_lower):
-                        matched = True
-                elif selector.startswith("#"):
-                    # ID selector: 匹配完整的id属性值
-                    id_name = selector[1:]
-                    pattern = rf'''id=["']\b{re.escape(id_name)}\b["']'''
-                    if re.search(pattern, html_lower):
-                        matched = True
-                elif selector.startswith("["):
-                    # 属性选择器 [attr*='value']: 转为正则
-                    # 提取属性名和值
-                    attr_match = re.match(r"\[([^=]+)[*~^$]?=['\"]([^'\"]+)['\"]\]", selector)
-                    if attr_match:
-                        attr, value = attr_match.groups()
-                        pattern = rf'''{re.escape(attr)}=["'][^"']*{re.escape(value)}[^"']*["']'''
-                        if re.search(pattern, html_lower):
-                            matched = True
-
-                if matched:
+        for captcha_type, patterns in self._compiled_captcha_selectors.items():
+            for _sel_type, compiled_re in patterns:
+                if compiled_re.search(html_lower):
                     detected.append(captcha_type)
                     break
 
