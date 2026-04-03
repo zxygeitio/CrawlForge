@@ -16,6 +16,8 @@ from src.logger import setup_logger, get_logger
 from src.js_hook_tools import JSHookManager
 from bs4 import BeautifulSoup
 
+__version__ = "2.0.0"
+
 
 def create_parser() -> argparse.ArgumentParser:
     """创建命令行解析器"""
@@ -59,7 +61,7 @@ def create_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("shell", help="交互式Python Shell")
 
     # version
-    parser.add_argument("--version", action="version", version="%(prog)s 2.0.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     return parser
 
@@ -93,7 +95,10 @@ def crawl_url(
         "playwright": RequestMethod.PLAYWRIGHT,
         "async_curl": RequestMethod.ASYNC_CURL,
     }
-    use_method = method_map.get(method, RequestMethod.CURL_CFFI)
+    use_method = method_map.get(method)
+    if use_method is None:
+        print(f"警告: 无效的 method '{method}', 使用默认值 curl")
+        use_method = RequestMethod.CURL_CFFI
 
     # 定义解析函数
     def html_parser(response) -> dict:

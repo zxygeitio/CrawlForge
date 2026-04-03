@@ -5,6 +5,7 @@
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Optional
@@ -21,6 +22,8 @@ try:
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -126,9 +129,17 @@ class CrawlerCelery:
     ) -> str:
         """添加爬虫任务"""
         task = self.register_task()
+
+        def wrapped_callback(result):
+            try:
+                if callback:
+                    callback(result)
+            except Exception as e:
+                logger.warning(f"Task callback failed: {e}")
+
         result = task.apply_async(
             args=[url, config, parser_name],
-            callbacks=[callback] if callback else None,
+            callbacks=[wrapped_callback] if callback else None,
         )
         return result.id
 

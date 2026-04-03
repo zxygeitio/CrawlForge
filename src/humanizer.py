@@ -180,7 +180,7 @@ class MouseTrajectory:
             路径点列表
         """
         if len(points) < 2:
-            return points
+            raise ValueError(f"bezier_curve requires at least 2 points, got {len(points)}")
 
         result = []
         for t in range(num_points):
@@ -279,6 +279,9 @@ class MouseTrajectory:
         Returns:
             [(x, y, timestamp), ...]
         """
+        if steps <= 0:
+            raise ValueError(f"steps must be positive, got {steps}")
+
         trajectory = []
         start_time = time.time()
 
@@ -695,6 +698,9 @@ class TouchTrajectory:
         Returns:
             [(x, y, timestamp), ...]
         """
+        if num_points <= 0:
+            raise ValueError(f"num_points must be positive, got {num_points}")
+
         trajectory = []
         start_time = time.time()
 
@@ -834,7 +840,7 @@ class KeyboardSimulator:
     - 大小写切换
     """
 
-    MAX_TEXT_LENGTH = 1000  # 单次输入最大长度限制
+    MAX_TEXT_LENGTH: int = 1000  # 单次输入最大长度限制
 
     def __init__(self):
         self.keystroke_delays: List[float] = []
@@ -886,6 +892,13 @@ class KeyboardSimulator:
             raise ValueError(
                 f"Text length {len(text)} exceeds maximum "
                 f"{KeyboardSimulator.MAX_TEXT_LENGTH}"
+            )
+
+        simulator = KeyboardSimulator()
+        if len(text) > simulator.MAX_TEXT_LENGTH:
+            raise ValueError(
+                f"Text length {len(text)} exceeds maximum "
+                f"{simulator.MAX_TEXT_LENGTH}"
             )
 
         simulator = KeyboardSimulator()
@@ -980,6 +993,11 @@ class ScrollSimulator:
         Returns:
             [{"y": y, "duration": d, "timestamp": t}, ...]
         """
+        if page_height <= 0:
+            raise ValueError(f"page_height must be positive, got {page_height}")
+        if viewport_height <= 0:
+            raise ValueError(f"viewport_height must be positive, got {viewport_height}")
+
         intensity_map = {
             "light": (50, 150, 0.2),
             "normal": (150, 400, 0.4),

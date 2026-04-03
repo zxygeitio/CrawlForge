@@ -319,7 +319,7 @@ class JA3Calculator:
             return {"error": str(e)}
 
     @classmethod
-    def calculate_ja3(cls, tls_params: Dict) -> Tuple[str, str]:
+    def calculate_ja3(cls, tls_params: Dict) -> Optional[Tuple[str, str]]:
         """
         计算JA3指纹
 
@@ -327,10 +327,10 @@ class JA3Calculator:
             tls_params: TLS参数字典
 
         Returns:
-            (ja3_string, ja3_hash)
+            (ja3_string, ja3_hash) or None on error
         """
         if "error" in tls_params:
-            return "", ""
+            return None
 
         # TLS版本
         tls_version = tls_params.get("tls_version")
@@ -562,9 +562,11 @@ class TLSFingerprintAnalyzer:
         }
 
         # 计算JA3
-        ja3_string, ja3_hash = self.ja3_calc.calculate_ja3(chrome_tls13)
-        result["ja3"] = ja3_string
-        result["ja3_hash"] = ja3_hash
+        ja3_result = self.ja3_calc.calculate_ja3(chrome_tls13)
+        if ja3_result is not None:
+            ja3_string, ja3_hash = ja3_result
+            result["ja3"] = ja3_string
+            result["ja3_hash"] = ja3_hash
         result["ja4"] = self.ja3_calc.calculate_ja4(chrome_tls13)
         result["tls_version"] = f"TLS {chrome_tls13['tls_version'][0]}.{chrome_tls13['tls_version'][1]}"
 
@@ -637,12 +639,12 @@ class TLSFingerprintAnalyzer:
         return recommendations
 
 
-def detect_tls_fingerprint() -> str:
+def detect_tls_fingerprint() -> Tuple[str, str]:
     """
     快速检测当前环境的TLS指纹
 
     Returns:
-        JA3指纹字符串
+        (ja3_fingerprint, error_message)
     """
     try:
         from curl_cffi import requests
@@ -656,12 +658,13 @@ def detect_tls_fingerprint() -> str:
 
         if response.status_code == 200:
             data = response.json()
-            return data.get("ja3_fingerprint", "unknown")
+            return (data.get("ja3_fingerprint", "unknown"), "")
 
     except Exception as e:
-        return f"error: {e}"
+        logging.warning(f"[TLS] Detection failed: {e}")
+        return ("error", str(e))
 
-    return "unknown"
+    return ("unknown", "")
 
 
 # 示例用法

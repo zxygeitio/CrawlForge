@@ -290,6 +290,22 @@ class DataCleaner:
         return result
 
     @staticmethod
+    def last(items: list, n: int = 1) -> list:
+        """
+        获取最后n个元素
+
+        Args:
+            items: 数据列表
+            n: 要获取的元素数量
+
+        Returns:
+            最后n个元素的列表
+        """
+        if n <= 0:
+            return []
+        return items[-n:] if len(items) >= n else items
+
+    @staticmethod
     def standardize_format(
         items: list,
         strip_whitespace: bool = True,
@@ -586,8 +602,13 @@ class DataExporter:
 
         # 确定fieldnames
         if fieldnames is None:
-            if isinstance(data[0], dict):
-                fieldnames = list(data[0].keys())
+            if data:
+                fieldnames = list(data[0].keys()) if isinstance(data[0], dict) else []
+                for item in data:
+                    if isinstance(item, dict):
+                        for key in item.keys():
+                            if key not in fieldnames:
+                                fieldnames.append(key)
 
         output = StringIO()
 
