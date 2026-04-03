@@ -250,13 +250,20 @@ class RedisQueueManager:
         Returns:
             任务数据或None
         """
-        # 先检查高优先级队列 (Redis 5.0+ 兼容: ZRANGEBYSCORE + ZREM)
+        # 使用 Lua 脚本原子化 ZPOPMIN（Redis 7.0 以下兼容）
+        # 防止 ZRANGEBYSCORE + ZREM 之间的竞态条件导致同一任务被多个 worker 重复取出
         priority_key = self._key("priority_queue")
-        # 取分数最低的1个成员，原子化删除
-        candidates = self.redis.zrangebyscore(priority_key, '-inf', '+inf', start=0, num=1)
-        if candidates:
-            self.redis.zrem(priority_key, candidates[0])
-            return json.loads(candidates[0])
+        lua_script = """
+        local candidates = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', '+inf', 'LIMIT', 0, 1)
+        if #candidates > 0 then
+            redis.call('ZREM', KEYS[1], candidates[1])
+            return candidates[1]
+        end
+        return nil
+        """
+        result = self.redis.eval(lua_script, 1, priority_key)
+        if result:
+            return json.loads(result)
 
         # 再检查普通队列
         key = self._key("task_queue")

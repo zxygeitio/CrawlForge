@@ -611,7 +611,19 @@ class HealthChecker:
     async def check_all(self) -> list[HealthCheckResult]:
         """检查所有组件"""
         tasks = [self.check(name) for name in self._components]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        raw = await asyncio.gather(*tasks, return_exceptions=True)
+        # 将 Exception 对象转换为 UNHEALTHY 结果，避免调用方 AttributeError
+        results = []
+        for r in raw:
+            if isinstance(r, Exception):
+                results.append(HealthCheckResult(
+                    component="unknown",
+                    status=HealthStatus.UNHEALTHY,
+                    message=f"Health check failed: {r}",
+                ))
+            else:
+                results.append(r)
+        return results
 
     def get_summary(self, results: list[HealthCheckResult]) -> HealthStatus:
         """获取总体健康状态"""

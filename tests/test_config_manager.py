@@ -236,22 +236,19 @@ class TestConfigManager:
 
     def test_path_traversal_yaml(self, manager, temp_dir):
         """测试 YAML 加载时防止 path traversal"""
-        # 在 cwd（项目目录）内创建合法配置
-        legitimate_path = os.path.join(os.getcwd(), "tests", "legitimate_test_cfg.yaml")
-        os.makedirs(os.path.dirname(legitimate_path), exist_ok=True)
+        # 在 CRAWLER_CONFIG_ROOT（即 temp_dir）内创建合法配置
+        legitimate_path = os.path.join(temp_dir, "legitimate_test_cfg.yaml")
         with open(legitimate_path, "w", encoding="utf-8") as f:
             yaml.dump({"name": "legitimate"}, f)
-        try:
-            # 正常加载应该成功（路径在 cwd 内）
-            config = manager.load_from_yaml(legitimate_path)
-            assert config.name == "legitimate"
 
-            # 尝试 path traversal 应该被拒绝（逃逸 cwd）
-            bad_path = os.path.join(temp_dir, "..", "..", "etc", "passwd")
-            with pytest.raises(ValueError, match="Path traversal attempt detected"):
-                manager.load_from_yaml(bad_path)
-        finally:
-            os.unlink(legitimate_path)
+        # 正常加载应该成功（路径在 CRAWLER_CONFIG_ROOT 内）
+        config = manager.load_from_yaml(legitimate_path)
+        assert config.name == "legitimate"
+
+        # 尝试 path traversal 应该被拒绝（包含 .. 逃逸）
+        bad_path = os.path.join(temp_dir, "..", "..", "etc", "passwd")
+        with pytest.raises(ValueError, match="Path traversal attempt detected"):
+            manager.load_from_yaml(bad_path)
 
     def test_path_traversal_json(self, manager, temp_dir):
         """测试 JSON 加载时防止 path traversal"""

@@ -112,9 +112,12 @@ class ConfigManager:
             )
         abs_base = os.path.abspath(base_dir)
 
-        # 仅当规范化路径包含 .. 时（即用户试图逃逸）才检查 containment
-        # 纯绝对路径（如 D:\nonexistent\cfg.yaml）不在此处拦截，由文件存在性检查处理
-        has_traversal = ".." in path  # 检查原始路径中的 .. 逃逸（normpath 会消除 ..，所以提前检查）
+        # 分层安全策略：
+        # - load 操作：阻止显式 .. 逃逸（防止 ../etc/passwd 类型的攻击）
+        #   纯绝对路径（如 C:\Windows\config.cfg）由 os.path.exists 拦截，此处不重复拒绝
+        # - save 操作：强制 containment（由 save_to_yaml/json 的 relpath 检查保证）
+        # 对 load：仅在包含 .. 时做 containment 检查（normpath 会在规范化后消除 ..）
+        has_traversal = ".." in path
         if has_traversal and not abs_path.startswith(abs_base + os.sep) and abs_path != abs_base:
             raise ValueError(
                 f"Path traversal attempt detected: '{path}' resolves to '{abs_path}', "
