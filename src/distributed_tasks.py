@@ -70,6 +70,7 @@ class CrawlerCelery:
         )
 
         self._setup_config()
+        self._crawl_task = self._create_crawl_task()
 
     def _setup_config(self):
         """配置 Celery"""
@@ -85,10 +86,6 @@ class CrawlerCelery:
             worker_prefetch_multiplier=1,
             worker_max_tasks_per_child=100,  # 每100个任务重启worker
         )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._crawl_task = self._create_crawl_task()
 
     def _create_crawl_task(self):
         """创建爬虫任务（在初始化时注册一次）"""
@@ -253,13 +250,13 @@ class RedisQueueManager:
         Returns:
             任务数据或None
         """
-        # 先检查高优先级队列
+        # 先检查高优先级队列 (Redis 5.0+ 兼容: ZRANGEBYSCORE + ZREM)
         priority_key = self._key("priority_queue")
-        result = self.redis.zpopmin(priority_key)
-
-        if result:
-            _, task_data = result[0]
-            return json.loads(task_data)
+        # 取分数最低的1个成员，原子化删除
+        candidates = self.redis.zrangebyscore(priority_key, '-inf', '+inf', start=0, num=1)
+        if candidates:
+            self.redis.zrem(priority_key, candidates[0])
+            return json.loads(candidates[0])
 
         # 再检查普通队列
         key = self._key("task_queue")

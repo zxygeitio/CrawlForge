@@ -191,15 +191,20 @@ class DataCleaner:
             seen = set()
             result = []
             for item in items:
-                # 对于字典,转换为可哈希的表示
                 if isinstance(item, dict):
                     try:
                         item_key = tuple(sorted(item.items()))
+                        # 验证可哈希: 放入临时set测试后恢复
+                        _ = set([item_key])
                     except TypeError:
-                        # 不可哈希的value(如list),序列化为JSON
+                        # 不可哈希的value(如list,dict嵌套),序列化为JSON
                         item_key = json.dumps(item, sort_keys=True, ensure_ascii=False)
                 else:
-                    item_key = item
+                    try:
+                        hash(item)
+                        item_key = item
+                    except TypeError:
+                        item_key = json.dumps(item, ensure_ascii=False)
 
                 if item_key not in seen:
                     seen.add(item_key)

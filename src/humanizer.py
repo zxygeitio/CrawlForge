@@ -880,6 +880,8 @@ class KeyboardSimulator:
             [{"key": "a", "press_time": t, "release_time": t+0.08}, ...]
         """
         # 长度限制，防止内存问题
+        if text is None:
+            raise ValueError("text must be a string, got None")
         if len(text) > KeyboardSimulator.MAX_TEXT_LENGTH:
             raise ValueError(
                 f"Text length {len(text)} exceeds maximum "
