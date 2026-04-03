@@ -14,6 +14,55 @@ from typing import Optional, Tuple, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+
+def _is_private_url(url: str) -> bool:
+    """
+    检查 URL 是否指向私有/内部网络 (SSRF 防护)
+
+    阻止: file://, 私有IP (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x), localhost
+    """
+    try:
+        import ipaddress
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+
+        # 只允许 http/https
+        if scheme not in ("http", "https"):
+            logger.warning(f"SSRF check blocked: scheme '{scheme}' not allowed")
+            return True
+
+        netloc = parsed.netloc.split(":")[0]  # 去掉端口
+
+        # 阻止 localhost / bare hostname that resolves to private
+        if netloc in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            logger.warning(f"SSRF check blocked: localhost address '{netloc}'")
+            return True
+
+        # 阻止常见内部主机名
+        if netloc.startswith(("internal.", "intr.", "dmz.", "corporate.")):
+            logger.warning(f"SSRF check blocked: internal hostname '{netloc}'")
+            return True
+
+        # 阻止IPv6本地地址
+        try:
+            ip = ipaddress.ip_address(netloc)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                logger.warning(f"SSRF check blocked: private IPv6 '{netloc}'")
+                return True
+        except ValueError:
+            # 不是IP地址，可能是主机名，尝试解析
+            # 不进行DNS解析(避免DNS重绑定攻击)，直接阻止
+            logger.warning(f"SSRF check blocked: unresolvable hostname '{netloc}'")
+            return True
+
+        return False
+    except Exception as e:
+        # 出错时保守地阻止
+        logger.warning(f"SSRF check error for URL '{url}': {e}, blocking by default")
+        return True
+
 import numpy as np
 
 try:
@@ -446,12 +495,21 @@ class ProtocolSliderCaptchaSolver(SliderCaptchaSolver):
         params = {"id": captcha_id} if captcha_id else {}
         params.update(kwargs)
 
+        if _is_private_url(load_url):
+            raise ValueError(f"SSRF check blocked: load_url points to private network: {load_url}")
+
         res = self.session.get(load_url, params=params)
         res_data = res.json()
 
         # 提取背景图、缺口图URL与基础校验参数
         self.bg_img_url = res_data.get("bg_img_url") or res_data.get("bg")
         self.slice_img_url = res_data.get("slice_img_url") or res_data.get("slice") or res_data.get("front")
+
+        # SSRF防护: 验证从响应中提取的URL
+        if self.bg_img_url and _is_private_url(self.bg_img_url):
+            raise ValueError(f"SSRF check blocked: bg_img_url points to private network: {self.bg_img_url}")
+        if self.slice_img_url and _is_private_url(self.slice_img_url):
+            raise ValueError(f"SSRF check blocked: slice_img_url points to private network: {self.slice_img_url}")
 
         self.base_params = {
             "note": res_data.get("note"),
@@ -479,6 +537,12 @@ class ProtocolSliderCaptchaSolver(SliderCaptchaSolver):
         if not self.session:
             import requests
             self.session = requests.Session()
+
+        # SSRF防护: 二次验证(防御绕过get_captcha_resource直接调用)
+        if _is_private_url(self.bg_img_url):
+            raise ValueError(f"SSRF check blocked: bg_img_url points to private network: {self.bg_img_url}")
+        if _is_private_url(self.slice_img_url):
+            raise ValueError(f"SSRF check blocked: slice_img_url points to private network: {self.slice_img_url}")
 
         bg_bytes = self.session.get(self.bg_img_url, timeout=10).content
         slice_bytes = self.session.get(self.slice_img_url, timeout=10).content
@@ -581,6 +645,9 @@ class ProtocolSliderCaptchaSolver(SliderCaptchaSolver):
             **self.base_params,
             "w": w,
         }
+
+        if _is_private_url(verify_url):
+            raise ValueError(f"SSRF check blocked: verify_url points to private network: {verify_url}")
 
         if method.upper() == "POST":
             res = self.session.post(verify_url, data=verify_params)

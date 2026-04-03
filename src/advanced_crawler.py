@@ -117,6 +117,7 @@ class FileStorage(StorageBackend):
         self._lock = asyncio.Lock()
         self.items = []
         self._url_index = set()
+        self._url_to_index = {}
         self._loaded = False
 
     async def _ensure_loaded(self):
@@ -127,6 +128,7 @@ class FileStorage(StorageBackend):
             except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, PermissionError):
                 self.items = []
             self._url_index = {item["url"] for item in self.items}
+            self._url_to_index = {item["url"]: i for i, item in enumerate(self.items)}
             self._loaded = True
 
     async def _save(self):
@@ -140,14 +142,14 @@ class FileStorage(StorageBackend):
         item["updated_at"] = datetime.utcnow().isoformat()
 
         if item["url"] in self._url_index:
-            for i, existing in enumerate(self.items):
-                if existing["url"] == item["url"]:
-                    self.items[i] = item
-                    await self._save()
-                    return True
+            idx = self._url_to_index[item["url"]]
+            self.items[idx] = item
+            await self._save()
+            return True
 
         self.items.append(item)
         self._url_index.add(item["url"])
+        self._url_to_index[item["url"]] = len(self.items) - 1
         await self._save()
         return True
 

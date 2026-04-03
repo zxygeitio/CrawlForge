@@ -945,14 +945,14 @@ class Monitor:
 
     # ============== 统计 ==============
 
-    def get_stats(self) -> dict:
+    async def get_stats(self) -> dict:
         """获取监控统计"""
         return {
             "alert_manager": self.alert_manager.get_stats(),
-            "request_success_rate": self._request_success.avg() if hasattr(self._request_success, 'avg') else None,
-            "request_latency": self._request_latency.avg() if hasattr(self._request_latency, 'avg') else None,
-            "proxy_availability": self._proxy_available.avg() if hasattr(self._proxy_available, 'avg') else None,
-            "captcha_success_rate": self._captcha_success.avg() if hasattr(self._captcha_success, 'avg') else None,
+            "request_success_rate": await self._request_success.avg(),
+            "request_latency": await self._request_latency.avg(),
+            "proxy_availability": await self._proxy_available.avg(),
+            "captcha_success_rate": await self._captcha_success.avg(),
         }
 
 
