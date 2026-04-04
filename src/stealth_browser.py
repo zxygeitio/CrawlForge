@@ -4,7 +4,7 @@
 """
 
 from typing import Optional
-from playwright.sync_api import Browser, BrowserContext, Page
+from playwright.async_api import Browser, BrowserContext, Page
 
 import logging
 logger = logging.getLogger(__name__)
@@ -847,17 +847,17 @@ class StealthBrowser:
         self._browser: Optional[Browser] = None
         self._playwright = None
 
-    def launch(self) -> Browser:
-        """启动隐身浏览器"""
-        from playwright.sync_api import sync_playwright
+    async def launch(self) -> Browser:
+        """启动隐身浏览器（AsyncPlaywright，避免在 asyncio loop 中崩溃）"""
+        from playwright.async_api import async_playwright
 
         # 关闭旧实例防止资源泄漏
         if self._browser:
-            self._browser.close()
+            await self._browser.close()
         if self._playwright:
-            self._playwright.stop()
+            await self._playwright.stop()
 
-        self._playwright = sync_playwright().start()
+        self._playwright = await async_playwright().start()
 
         args = get_stealth_browser_args()
 
@@ -872,39 +872,35 @@ class StealthBrowser:
             else:
                 args.append(f"--proxy-server={server}")
 
-        try:
-            self._browser = self._playwright.chromium.launch(
-                headless=self.config.headless,
-                args=args
-            )
-            return self._browser
-        except Exception:
-            self._playwright.stop()
-            raise
+        self._browser = await self._playwright.chromium.launch(
+            headless=self.config.headless,
+            args=args
+        )
+        return self._browser
 
-    def create_context(self) -> BrowserContext:
+    async def create_context(self) -> BrowserContext:
         """创建隐身上下文"""
         if not self._browser:
             raise RuntimeError("Browser not launched")
 
         context_args = get_stealth_context_args()
 
-        context = self._browser.new_context(
+        context = await self._browser.new_context(
             **{**context_args}
         )
 
         # 设置用户代理
         if self.config.user_agent:
-            context.set_extra_http_headers({"User-Agent": self.config.user_agent})
+            await context.set_extra_http_headers({"User-Agent": self.config.user_agent})
 
         return context
 
-    def create_page(self, context: BrowserContext = None) -> Page:
+    async def create_page(self, context: BrowserContext = None) -> Page:
         """创建注入反检测脚本的页面"""
         if not context:
-            context = self.create_context()
+            context = await self.create_context()
 
-        page = context.new_page()
+        page = await context.new_page()
 
         # 注入基础反检测脚本
         page.evaluate(STealth_JS_INJECT)
@@ -933,15 +929,15 @@ class StealthBrowser:
 
         return page
 
-    def close(self):
+    async def close(self):
         """关闭浏览器"""
         try:
             if self._browser:
-                self._browser.close()
+                await self._browser.close()
         finally:
             self._browser = None
         try:
             if self._playwright:
-                self._playwright.stop()
+                await self._playwright.stop()
         finally:
             self._playwright = None

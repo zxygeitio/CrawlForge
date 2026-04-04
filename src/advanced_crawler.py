@@ -70,9 +70,9 @@ class CrawlerConfig:
     use_stealth_browser: bool = True
 
     # Playwright 进阶配置
-    playwright_wait_until: str = "domcontentloaded"  # domcontentloaded / load / networkidle
+    playwright_wait_until: str = "load"  # domcontentloaded / load / networkidle（默认load，networkidle易被analytics请求阻塞）
     playwright_networkidle_timeout: int = 15000  # networkidle 等待超时(ms)
-    playwright_wait_after_load: int = 2000  # 页面稳定后额外等待(ms)，给JS渲染留时间
+    playwright_wait_after_load: int = 3000  # 页面稳定后额外等待(ms)，给JS渲染留时间
     cookie_persistence: bool = False  # 是否持久化 cookie（反爬站点需要）
 
     # XHR/API 拦截配置
@@ -361,19 +361,25 @@ class AdvancedCrawler:
 
     def _request_playwright(self, url: str, wait_until: str = None,
                            js_code: str = None, hooks: list = None) -> Optional[Any]:
-        """Playwright请求（复用浏览器实例）"""
+        """Playwright请求（复用浏览器实例，AsyncPlaywright 避免 event loop 冲突）"""
         if not self.stealth_browser:
             return None
 
         page = None
         try:
+            loop = asyncio.get_event_loop()
+
             # 复用浏览器实例，避免每次请求都启动/关闭浏览器（启动约1-2秒）
             if self._browser is None:
-                self._browser = self.stealth_browser.launch()
+                self._browser = loop.run_until_complete(
+                    self.stealth_browser.launch()
+                )
 
             # 复用 context，或创建新的（带完整反检测注入）
             if self._context is None:
-                self._context = self.stealth_browser.create_context()
+                self._context = loop.run_until_complete(
+                    self.stealth_browser.create_context()
+                )
 
                 # Cookie 持久化：从文件加载 cookies 到 context
                 if self.config.cookie_persistence:
@@ -384,7 +390,9 @@ class AdvancedCrawler:
                             for cookie in saved_cookies:
                                 # 确保必要字段存在
                                 if "name" in cookie and "value" in cookie:
-                                    self._context.add_cookies([cookie])
+                                    loop.run_until_complete(
+                                        self._context.add_cookies([cookie])
+                                    )
                             logger.info(f"Applied {len(saved_cookies)} cookies to context")
                         except Exception as e:
                             logger.warning(f"Failed to apply cookies to context: {e}")
@@ -412,7 +420,9 @@ class AdvancedCrawler:
 
             # create_page 应用所有反检测JS（STealth_JS_INJECT + 12个增强脚本）
             # 必须调用 create_page，不能用 _context.new_page()（后者是裸的 Playwright 调用，无任何注入）
-            page = self.stealth_browser.create_page(self._context)
+            page = loop.run_until_complete(
+                self.stealth_browser.create_page(self._context)
+            )
 
             # 注册 XHR 拦截（必须在 goto 之前）
             if self.config.xhr_intercept:
@@ -422,18 +432,22 @@ class AdvancedCrawler:
             if hooks:
                 JSHookManager.install_hooks(page, hooks)
 
-            # 使用配置中的 wait_until（默认为 domcontentloaded）
+            # 使用配置中的 wait_until（默认为 load）
             effective_wait_until = wait_until or self.config.playwright_wait_until
-            response = page.goto(url, wait_until=effective_wait_until)
+            response = loop.run_until_complete(
+                page.goto(url, wait_until=effective_wait_until)
+            )
 
             if js_code:
-                result = page.evaluate(js_code)
+                result = loop.run_until_complete(page.evaluate(js_code))
                 return result
 
             # 等待页面稳定后再获取 content
             networkidle_timeout = self.config.playwright_networkidle_timeout // 1000  # ms -> s
             try:
-                page.wait_for_load_state("networkidle", timeout=networkidle_timeout)
+                loop.run_until_complete(
+                    page.wait_for_load_state("networkidle", timeout=networkidle_timeout)
+                )
             except Exception:
                 pass  # 超时时继续尝试获取 content
 
@@ -442,7 +456,7 @@ class AdvancedCrawler:
             if extra_wait > 0:
                 time.sleep(extra_wait)
 
-            content = page.content()
+            content = loop.run_until_complete(page.content())
             result = {
                 "status": response.status if response else None,
                 "content": content
@@ -455,9 +469,9 @@ class AdvancedCrawler:
             # 更新持久化 cookie（如果启用）
             if self.config.cookie_persistence:
                 try:
-                    current_cookies = self._context.cookies()
-                    if current_cookies:
-                        self._save_cookies(current_cookies)
+                    cookies = loop.run_until_complete(self._context.cookies())
+                    if cookies:
+                        self._save_cookies(cookies)
                 except Exception as e:
                     logger.warning(f"Failed to save cookies: {e}")
 
@@ -468,7 +482,7 @@ class AdvancedCrawler:
         finally:
             if page:
                 try:
-                    page.close()
+                    loop.run_until_complete(page.close())
                 except Exception:
                     pass
 
@@ -707,28 +721,33 @@ class AdvancedCrawler:
         """关闭资源"""
         if hasattr(self, '_session') and self._session:
             self._session.close()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         # Cookie 持久化：关闭前保存
         if self.config.cookie_persistence and self._context:
             try:
-                cookies = self._context.cookies()
+                cookies = loop.run_until_complete(self._context.cookies())
                 if cookies:
                     self._save_cookies(cookies)
             except Exception as e:
                 logger.warning(f"Failed to save cookies on close: {e}")
         if self._context:
             try:
-                self._context.close()
+                loop.run_until_complete(self._context.close())
             except Exception:
                 pass
             self._context = None
         if hasattr(self, '_browser') and self._browser:
             try:
-                self._browser.close()
+                loop.run_until_complete(self._browser.close())
             except Exception:
                 pass
             self._browser = None
         if self.stealth_browser:
-            self.stealth_browser.close()
+            loop.run_until_complete(self.stealth_browser.close())
         if hasattr(self.proxy_pool, 'stop_health_checker'):
             self.proxy_pool.stop_health_checker()
 
