@@ -465,12 +465,23 @@ class AdvancedCrawler:
             return None
 
         try:
-            item = parser(response)
-            if item:
-                item["url"] = url
-                item["crawled_at"] = datetime.utcnow().isoformat()
-                self.storage.save(item)
-            return item
+            items = parser(response)
+            if items is None:
+                return None
+            # 支持 parser 返回单个 dict 或 list[dict]
+            if isinstance(items, list):
+                results = []
+                for item in items:
+                    item["url"] = url
+                    item["crawled_at"] = datetime.utcnow().isoformat()
+                    self.storage.save(item)
+                    results.append(item)
+                return results
+            else:
+                items["url"] = url
+                items["crawled_at"] = datetime.utcnow().isoformat()
+                self.storage.save(items)
+            return items
         except Exception as e:
             logger.exception(f"Parse Error for {url}: {e}")
             return None
@@ -488,17 +499,31 @@ class AdvancedCrawler:
             return None
 
         try:
-            item = parser(response)
-            if item:
-                item["url"] = url
-                item["crawled_at"] = datetime.utcnow().isoformat()
+            items = parser(response)
+            if items is None:
+                return None
+            # 支持 parser 返回单个 dict 或 list[dict]
+            if isinstance(items, list):
+                results = []
+                for item in items:
+                    item["url"] = url
+                    item["crawled_at"] = datetime.utcnow().isoformat()
+                    if isinstance(self.storage, SyncFileStorage):
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, self.storage.save, item)
+                    else:
+                        await self.storage.save(item)
+                    results.append(item)
+                return results
+            else:
+                items["url"] = url
+                items["crawled_at"] = datetime.utcnow().isoformat()
                 if isinstance(self.storage, SyncFileStorage):
-                    # 在executor中运行同步存储操作，避免阻塞事件循环
                     loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(None, self.storage.save, item)
+                    await loop.run_in_executor(None, self.storage.save, items)
                 else:
-                    await self.storage.save(item)
-            return item
+                    await self.storage.save(items)
+            return items
         except Exception as e:
             logger.exception(f"Parse Error for {url}: {e}")
             return None
