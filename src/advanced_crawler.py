@@ -437,6 +437,11 @@ class AdvancedCrawler:
                 time.sleep(self.config.download_delay)
                 return response
 
+            # _request_playwright 返回 dict: {'status': ..., 'content': ...}
+            if response and isinstance(response, dict) and response.get('status') == 200:
+                time.sleep(self.config.download_delay)
+                return response
+
             if attempt < self.config.retry_times - 1:
                 delay = self._exponential_backoff(attempt)
                 logger.warning(f"Retry {attempt + 1} after {delay}s for {url}...")
