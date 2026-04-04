@@ -88,6 +88,10 @@ class TokenBucket:
         self._refill()
         return int(self._tokens)
 
+    def refund(self, tokens: int = 1):
+        """返还已消费的令牌（用于失败时回滚）"""
+        self._tokens = min(self._tokens + tokens, self.config.capacity)
+
     def acquire_sync(self, tokens: int = 1) -> bool:
         """
         同步获取令牌 (不等待)
@@ -230,19 +234,19 @@ class MultiLimiter:
         self._domain_locks: Dict[str, asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
 
-    async def acquire(self, domain: str = None, tokens: int = 1) -> bool:
+    async def acquire(self, domain: str = None, tokens: int = 1, timeout: float = None) -> bool:
         """
         获取限流许可
 
         Args:
             domain: 域名
             tokens: 令牌数
+            timeout: 超时时间(秒)
         """
-        # 先检查全局
-        if not await self._global.acquire(tokens):
-            return False
+        deadline = time.monotonic() + timeout if timeout is not None else None
 
-        # 再检查域名 (使用per-domain lock防止竞态)
+        # Step 1: 先检查域名 bucket (如果指定了 domain)
+        domain_bucket = None
         if domain:
             domain_lock = self._domain_locks.setdefault(domain, asyncio.Lock())
             async with domain_lock:
@@ -250,7 +254,18 @@ class MultiLimiter:
                 if bucket is None:
                     bucket = TokenBucket(TokenBucketConfig(rate=10, capacity=20))
                     self._domains[domain] = bucket
-                return await bucket.acquire(tokens)
+                remaining = None if deadline is None else max(0, deadline - time.monotonic())
+                if not await bucket.acquire(tokens, timeout=remaining):
+                    return False
+                domain_bucket = bucket
+
+        # Step 2: 再检查全局 bucket
+        remaining = None if deadline is None else max(0, deadline - time.monotonic())
+        if not await self._global.acquire(tokens, timeout=remaining):
+            # 全局失败时退还域名 bucket 的 tokens
+            if domain_bucket is not None:
+                domain_bucket.refund(tokens)
+            return False
 
         return True
 
