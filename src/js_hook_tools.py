@@ -1000,7 +1000,8 @@ class JSHookManager:
         return '\n'.join(cls.HOOKS.values())
 
     @classmethod
-    def install_hooks(cls, page, hook_names: list = None):
+    @classmethod
+    async def install_hooks(cls, page, hook_names: list = None):
         """
         在Playwright页面中安装Hook
 
@@ -1015,7 +1016,7 @@ class JSHookManager:
             script = '\n'.join(scripts)
 
         try:
-            page.evaluate(script)
+            await page.evaluate(script)
         except Exception as e:
             logger.warning(f"JS hook evaluation failed: {e}")
         logger.debug(f"Installed hooks: {hook_names or 'all'}")

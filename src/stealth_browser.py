@@ -903,29 +903,29 @@ class StealthBrowser:
         page = await context.new_page()
 
         # 注入基础反检测脚本
-        page.evaluate(STealth_JS_INJECT)
+        await page.evaluate(STealth_JS_INJECT)
 
         # 根据配置注入增强版脚本
         if self.config.randomize_webgl:
-            page.evaluate(CANVAS_HOOK_V2)
+            await page.evaluate(CANVAS_HOOK_V2)
 
         if self.config.randomize_canvas:
-            page.evaluate(CANVAS_FONT_INJECT)
+            await page.evaluate(CANVAS_FONT_INJECT)
 
         if self.config.fake_media_devices:
-            page.evaluate(MEDIA_DEVICES_INJECT)
+            await page.evaluate(MEDIA_DEVICES_INJECT)
 
         if self.config.fake_battery:
-            page.evaluate(BATTERY_INJECT)
+            await page.evaluate(BATTERY_INJECT)
 
         # 注入额外反检测脚本 (默认全部开启)
-        page.evaluate(AUTOMATION_HOOK_INJECT)
-        page.evaluate(HARDWARE_FP_HOOK_INJECT)
-        page.evaluate(CONNECTION_HOOK_INJECT)
-        page.evaluate(TIMING_HOOK_INJECT)
-        page.evaluate(WASM_HOOK_INJECT)
-        page.evaluate(SERVICE_WORKER_HOOK_INJECT)
-        page.evaluate(SPEECH_HOOK_INJECT)
+        await page.evaluate(AUTOMATION_HOOK_INJECT)
+        await page.evaluate(HARDWARE_FP_HOOK_INJECT)
+        await page.evaluate(CONNECTION_HOOK_INJECT)
+        await page.evaluate(TIMING_HOOK_INJECT)
+        await page.evaluate(WASM_HOOK_INJECT)
+        await page.evaluate(SERVICE_WORKER_HOOK_INJECT)
+        await page.evaluate(SPEECH_HOOK_INJECT)
 
         return page
 

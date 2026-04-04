@@ -417,7 +417,7 @@ class AdvancedCrawler:
 
                 # 额外注入（可选hooks）
                 if hooks:
-                    JSHookManager.install_hooks(page, hooks)
+                    await JSHookManager.install_hooks(page, hooks)
 
                 # 使用配置中的 wait_until（默认为 load）
                 effective_wait_until = wait_until or self.config.playwright_wait_until
