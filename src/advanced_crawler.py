@@ -524,20 +524,12 @@ class AdvancedCrawler:
             return None
 
         for attempt in range(self.config.retry_times):
-            # 限速器在请求之前触发 (通过线程执行异步acquire)
+            # 限速器在请求之前触发（同步方式，不引入 event loop 复杂性问题）
             if self.rate_limiter:
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # 在新线程中运行异步acquire
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as pool:
-                            future = pool.submit(asyncio.run, self.rate_limiter.acquire())
-                            future.result()
-                    else:
-                        loop.run_until_complete(self.rate_limiter.acquire())
+                    self.rate_limiter.acquire_sync()
                 except Exception:
-                    pass  # 限速失败时继续请求
+                    pass
 
             if use_method == RequestMethod.CURL_CFFI:
                 response = self._request_curl(method, url, **kwargs)
