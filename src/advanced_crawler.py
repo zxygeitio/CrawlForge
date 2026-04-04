@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import random
 import time
 from collections import deque
@@ -67,6 +68,16 @@ class CrawlerConfig:
     # 特性开关
     use_tls_bypass: bool = True
     use_stealth_browser: bool = True
+
+    # Playwright 进阶配置
+    playwright_wait_until: str = "domcontentloaded"  # domcontentloaded / load / networkidle
+    playwright_networkidle_timeout: int = 15000  # networkidle 等待超时(ms)
+    playwright_wait_after_load: int = 2000  # 页面稳定后额外等待(ms)，给JS渲染留时间
+    cookie_persistence: bool = False  # 是否持久化 cookie（反爬站点需要）
+
+    # XHR/API 拦截配置
+    xhr_intercept: bool = False  # 是否拦截 XHR 响应
+    xhr_url_patterns: list = field(default_factory=list)  # 拦截匹配的 URL 模式
 
     # 日志配置
     log_level: str = "INFO"
@@ -239,6 +250,11 @@ class AdvancedCrawler:
         # Playwright 浏览器复用
         self._browser = None
         self._context = None
+        # Cookie 持久化
+        self._cookies_path = f"{config.name}_cookies.json"
+        self._xhr_responses: list = []
+        if config.cookie_persistence:
+            self._load_cookies()
 
     def _init_storage(self):
         if self.config.storage_type == "mongodb":
@@ -283,6 +299,27 @@ class AdvancedCrawler:
         else:
             self.stealth_browser = None
 
+    def _load_cookies(self):
+        """从文件加载 cookies（反爬站点会话保持）"""
+        if os.path.exists(self._cookies_path):
+            try:
+                with open(self._cookies_path, "r", encoding="utf-8") as f:
+                    cookies = json.load(f)
+                logger.info(f"Loaded {len(cookies)} cookies from {self._cookies_path}")
+                return cookies
+            except Exception as e:
+                logger.warning(f"Failed to load cookies: {e}")
+        return []
+
+    def _save_cookies(self, cookies: list):
+        """保存 cookies 到文件"""
+        try:
+            with open(self._cookies_path, "w", encoding="utf-8") as f:
+                json.dump(cookies, f, ensure_ascii=False)
+            logger.info(f"Saved {len(cookies)} cookies to {self._cookies_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save cookies: {e}")
+
     def _get_proxy(self) -> Optional[dict]:
         if not self.config.proxy_enabled:
             return None
@@ -322,7 +359,7 @@ class AdvancedCrawler:
             logger.exception(f"requests Error for {url}: {e}")
             return None
 
-    def _request_playwright(self, url: str, wait_until: str = "domcontentloaded",
+    def _request_playwright(self, url: str, wait_until: str = None,
                            js_code: str = None, hooks: list = None) -> Optional[Any]:
         """Playwright请求（复用浏览器实例）"""
         if not self.stealth_browser:
@@ -338,31 +375,93 @@ class AdvancedCrawler:
             if self._context is None:
                 self._context = self.stealth_browser.create_context()
 
+                # Cookie 持久化：从文件加载 cookies 到 context
+                if self.config.cookie_persistence:
+                    saved_cookies = self._load_cookies()
+                    if saved_cookies:
+                        try:
+                            # 添加 cookie 到 context（Playwright 格式）
+                            for cookie in saved_cookies:
+                                # 确保必要字段存在
+                                if "name" in cookie and "value" in cookie:
+                                    self._context.add_cookies([cookie])
+                            logger.info(f"Applied {len(saved_cookies)} cookies to context")
+                        except Exception as e:
+                            logger.warning(f"Failed to apply cookies to context: {e}")
+
+            # XHR 响应拦截：收集匹配的 API 响应
+            xhr_responses = []
+            xhr_patterns = self.config.xhr_url_patterns or []
+
+            def on_response(response):
+                """XHR/ fetch 响应拦截"""
+                if not self.config.xhr_intercept:
+                    return
+                # 无视非文档请求
+                if response.resource_type not in ("xhr", "fetch"):
+                    return
+                resp_url = response.url
+                # 如果配置了 URL 模式，只收集匹配的
+                if xhr_patterns and not any(p in resp_url for p in xhr_patterns):
+                    return
+                try:
+                    body = response.text()
+                    xhr_responses.append({"url": resp_url, "body": body, "status": response.status})
+                except Exception:
+                    pass
+
             # create_page 应用所有反检测JS（STealth_JS_INJECT + 12个增强脚本）
             # 必须调用 create_page，不能用 _context.new_page()（后者是裸的 Playwright 调用，无任何注入）
             page = self.stealth_browser.create_page(self._context)
+
+            # 注册 XHR 拦截（必须在 goto 之前）
+            if self.config.xhr_intercept:
+                page.on("response", on_response)
 
             # 额外注入（可选hooks，叠加在create_page已注入的基础上）
             if hooks:
                 JSHookManager.install_hooks(page, hooks)
 
-            response = page.goto(url, wait_until=wait_until)
+            # 使用配置中的 wait_until（默认为 domcontentloaded）
+            effective_wait_until = wait_until or self.config.playwright_wait_until
+            response = page.goto(url, wait_until=effective_wait_until)
 
             if js_code:
                 result = page.evaluate(js_code)
                 return result
 
-            # 等待页面稳定后再获取 content，避免"page is navigating"错误
+            # 等待页面稳定后再获取 content
+            networkidle_timeout = self.config.playwright_networkidle_timeout // 1000  # ms -> s
             try:
-                page.wait_for_load_state("networkidle", timeout=10000)
+                page.wait_for_load_state("networkidle", timeout=networkidle_timeout)
             except Exception:
                 pass  # 超时时继续尝试获取 content
 
+            # 额外等待，给 JS 动态渲染留时间（如 SPA、React/Vue）
+            extra_wait = self.config.playwright_wait_after_load / 1000  # ms -> s
+            if extra_wait > 0:
+                time.sleep(extra_wait)
+
             content = page.content()
-            return {
+            result = {
                 "status": response.status if response else None,
                 "content": content
             }
+
+            # 附加 XHR 拦截数据
+            if self.config.xhr_intercept and xhr_responses:
+                result["xhr_responses"] = xhr_responses
+
+            # 更新持久化 cookie（如果启用）
+            if self.config.cookie_persistence:
+                try:
+                    current_cookies = self._context.cookies()
+                    if current_cookies:
+                        self._save_cookies(current_cookies)
+                except Exception as e:
+                    logger.warning(f"Failed to save cookies: {e}")
+
+            return result
         except Exception as e:
             logger.exception(f"Playwright Error for {url}: {e}")
             return None
@@ -608,6 +707,14 @@ class AdvancedCrawler:
         """关闭资源"""
         if hasattr(self, '_session') and self._session:
             self._session.close()
+        # Cookie 持久化：关闭前保存
+        if self.config.cookie_persistence and self._context:
+            try:
+                cookies = self._context.cookies()
+                if cookies:
+                    self._save_cookies(cookies)
+            except Exception as e:
+                logger.warning(f"Failed to save cookies on close: {e}")
         if self._context:
             try:
                 self._context.close()
