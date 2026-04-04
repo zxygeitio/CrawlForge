@@ -351,6 +351,12 @@ class AdvancedCrawler:
                 result = page.evaluate(js_code)
                 return result
 
+            # 等待页面稳定后再获取 content，避免"page is navigating"错误
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass  # 超时时继续尝试获取 content
+
             content = page.content()
             return {
                 "status": response.status if response else None,
