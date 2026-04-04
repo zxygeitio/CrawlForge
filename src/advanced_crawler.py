@@ -31,6 +31,7 @@ from src.proxy_manager import ProxyPoolManager, ProxyPoolConfig, ProxyStatus, Sy
 from src.rate_limiter import TokenBucket, SlidingWindowRateLimiter, MultiLimiter
 from src.stealth_browser import StealthBrowser, StealthConfig, STealth_JS_INJECT
 from src.js_hook_tools import JSHookManager
+from src.ucp_browser import UCPBrowser, UCPConfig
 
 # 创建logger
 logger = logging.getLogger(__name__)
@@ -79,6 +80,10 @@ class CrawlerConfig:
     xhr_intercept: bool = False  # 是否拦截 XHR 响应
     xhr_url_patterns: list = field(default_factory=list)  # 拦截匹配的 URL 模式
 
+    # UCP (undetected-chromedriver) 配置
+    use_ucp: bool = False  # 使用 UCP 而非 Playwright（高对抗站点）
+    ucp_cookie_persistence: bool = False  # UCP cookie 持久化
+
     # 日志配置
     log_level: str = "INFO"
 
@@ -89,6 +94,7 @@ class RequestMethod(Enum):
     CURL_CFFI = "curl_cffi"
     PLAYWRIGHT = "playwright"
     ASYNC_CURL = "async_curl"
+    UCP = "ucp"  # undetected-chromedriver，高强度反检测
 
 
 # ============== 存储后端 ==============
@@ -254,6 +260,11 @@ class AdvancedCrawler:
         # Cookie 持久化
         self._cookies_path = f"{config.name}_cookies.json"
         self._xhr_responses: list = []
+        self._ucp_cookies_path = f"{config.name}_ucp_cookies.json"
+        # UCP 浏览器单例（独立管理，不复用 Playwright 的 _browser）
+        self._ucp_browser = None
+        if config.use_ucp:
+            self._init_ucp_browser()
         if config.cookie_persistence:
             self._load_cookies()
 
@@ -299,6 +310,43 @@ class AdvancedCrawler:
             self.stealth_browser = StealthBrowser(stealth_config)
         else:
             self.stealth_browser = None
+
+    def _init_ucp_browser(self):
+        """初始化 UCP 浏览器"""
+        proxy = None
+        if self.config.proxy_enabled:
+            proxy_item = self.proxy_pool.get_proxy()
+            if proxy_item:
+                proxy = {"server": proxy_item.url}
+
+        ucp_config = UCPConfig(
+            headless=self.config.headless,
+            user_agent=self.config.user_agent,
+            proxy=proxy,
+            viewport={"width": 1920, "height": 1080},
+        )
+        self._ucp_browser = UCPBrowser(ucp_config)
+
+    def _load_ucp_cookies(self) -> list:
+        """加载 UCP cookies"""
+        if os.path.exists(self._ucp_cookies_path):
+            try:
+                with open(self._ucp_cookies_path, "r", encoding="utf-8") as f:
+                    cookies = json.load(f)
+                logger.info(f"Loaded {len(cookies)} UCP cookies")
+                return cookies
+            except Exception as e:
+                logger.warning(f"Failed to load UCP cookies: {e}")
+        return []
+
+    def _save_ucp_cookies(self, cookies: list):
+        """保存 UCP cookies"""
+        try:
+            with open(self._ucp_cookies_path, "w", encoding="utf-8") as f:
+                json.dump(cookies, f, ensure_ascii=False)
+            logger.info(f"Saved {len(cookies)} UCP cookies")
+        except Exception as e:
+            logger.warning(f"Failed to save UCP cookies: {e}")
 
     def _load_cookies(self):
         """从文件加载 cookies（反爬站点会话保持）"""
@@ -486,6 +534,41 @@ class AdvancedCrawler:
 
         return asyncio.run(_async_impl())
 
+    def _request_ucp(self, url: str, **kwargs) -> Optional[Any]:
+        """UCP (undetected-chromedriver) 请求，高强度反检测"""
+        if not self._ucp_browser:
+            logger.error("UCP browser not initialized, set use_ucp=True in config")
+            return None
+
+        try:
+            browser = self._ucp_browser
+
+            # 加载持久化 cookies
+            cookies = None
+            if self.config.ucp_cookie_persistence:
+                cookies = self._load_ucp_cookies()
+
+            # 打开页面
+            if cookies:
+                content, current_cookies = browser.get_with_cookies(
+                    url, cookies=cookies, timeout=self.config.timeout
+                )
+            else:
+                content = browser.get(url, timeout=self.config.timeout)
+                current_cookies = browser.get_cookies()
+
+            # 保存 cookies
+            if self.config.ucp_cookie_persistence and current_cookies:
+                self._save_ucp_cookies(current_cookies)
+
+            return {
+                "status": 200,
+                "content": content
+            }
+        except Exception as e:
+            logger.exception(f"UCP Error for {url}: {e}")
+            return None
+
     async def _get_async_session(self) -> AsyncSession:
         """获取或创建异步Session（连接池复用）"""
         if self._async_session is None:
@@ -535,6 +618,8 @@ class AdvancedCrawler:
                 response = self._request_curl(method, url, **kwargs)
             elif use_method == RequestMethod.PLAYWRIGHT:
                 response = self._request_playwright(url, **kwargs)
+            elif use_method == RequestMethod.UCP:
+                response = self._request_ucp(url, **kwargs)
             else:
                 response = self._request_requests(method, url, **kwargs)
 
@@ -738,6 +823,11 @@ class AdvancedCrawler:
                 await self.stealth_browser.close()
 
         asyncio.run(_async_close())
+
+        # 关闭 UCP 浏览器（同步，不需要 asyncio）
+        if self._ucp_browser:
+            self._ucp_browser.close()
+            self._ucp_browser = None
 
         if hasattr(self.proxy_pool, 'stop_health_checker'):
             self.proxy_pool.stop_health_checker()
