@@ -163,6 +163,19 @@ class SlidingWindowRateLimiter:
         self._cleanup()
         return len(self._requests)
 
+    def acquire_sync(self) -> bool:
+        """同步获取限流许可（阻塞等待）"""
+        while True:
+            self._cleanup()
+            if len(self._requests) < self.max_requests:
+                self._requests.append(time.monotonic())
+                return True
+            # 等待最旧请求过期
+            if self._requests:
+                wait_time = self._requests[0] + self.window_seconds - time.monotonic()
+                if wait_time > 0:
+                    time.sleep(wait_time)
+
 
 class AdaptiveRateLimiter:
     """
@@ -216,6 +229,14 @@ class AdaptiveRateLimiter:
         if new_rate != self.current_rate:
             self.current_rate = new_rate
             self._bucket.config.rate = new_rate
+
+    def acquire_sync(self, success: bool = True) -> bool:
+        """同步获取限流许可（阻塞等待）"""
+        if success:
+            self._increase_rate()
+        else:
+            self._decrease_rate()
+        return self._bucket.acquire_sync()
 
 
 class MultiLimiter:

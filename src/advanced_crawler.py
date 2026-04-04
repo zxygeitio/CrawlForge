@@ -23,6 +23,7 @@ from typing import Any, Callable, Optional
 import aiohttp
 import requests
 from curl_cffi import requests as curl_requests
+from curl_cffi.requests import AsyncSession
 from playwright.sync_api import sync_playwright
 
 from src.proxy_manager import ProxyPoolManager, ProxyPoolConfig, ProxyStatus, SyncProxyPoolManager
@@ -353,9 +354,10 @@ class AdvancedCrawler:
             kwargs.setdefault("timeout", self.config.timeout)
             kwargs.setdefault("impersonate", "chrome")
 
-            if method.upper() == "GET":
-                return await curl_requests.get(url, **kwargs)
-            return await curl_requests.post(url, **kwargs)
+            async with AsyncSession() as s:
+                if method.upper() == "GET":
+                    return await s.get(url, **kwargs)
+                return await s.post(url, **kwargs)
         except Exception as e:
             logger.exception(f"async_curl Error for {url}: {e}")
             return None
@@ -378,6 +380,21 @@ class AdvancedCrawler:
             return None
 
         for attempt in range(self.config.retry_times):
+            # 限速器在请求之前触发 (通过线程执行异步acquire)
+            if self.rate_limiter:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 在新线程中运行异步acquire
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            future = pool.submit(asyncio.run, self.rate_limiter.acquire())
+                            future.result()
+                    else:
+                        loop.run_until_complete(self.rate_limiter.acquire())
+                except Exception:
+                    pass  # 限速失败时继续请求
+
             if use_method == RequestMethod.CURL_CFFI:
                 response = self._request_curl(method, url, **kwargs)
             elif use_method == RequestMethod.PLAYWRIGHT:
@@ -409,14 +426,16 @@ class AdvancedCrawler:
             return None
 
         for attempt in range(self.config.retry_times):
+            # 限速器在请求之前触发
+            if self.rate_limiter:
+                await self.rate_limiter.acquire()
+
             if use_method == RequestMethod.ASYNC_CURL:
                 response = await self._async_request_curl(method, url, **kwargs)
             else:
                 response = self.request(method, url, use_method, **kwargs)
 
             if response and hasattr(response, 'status_code') and response.status_code == 200:
-                if self.rate_limiter:
-                    await self.rate_limiter.acquire()
                 return response
 
             if attempt < self.config.retry_times - 1:
