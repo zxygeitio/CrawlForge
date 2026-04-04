@@ -337,16 +337,18 @@ MEDIA_DEVICES_INJECT = """
         return Promise.resolve(fakeDevices);
     };
 
-    // Hook getUserMedia
-    const origGetUserMedia = navigator.getUserMedia.bind(navigator);
-    navigator.getUserMedia = function(constraints, successCallback, errorCallback) {
-        // 模拟成功
-        successCallback({
-            getTracks: () => [],
-            getAudioTracks: () => [],
-            getVideoTracks: () => []
-        });
-    };
+    // Hook getUserMedia - 保护性判断，避免 headless Chromium 中 undefined 导致崩溃
+    if (navigator.getUserMedia) {
+        const origGetUserMedia = navigator.getUserMedia.bind(navigator);
+        navigator.getUserMedia = function(constraints, successCallback, errorCallback) {
+            // 模拟成功
+            successCallback({
+                getTracks: () => [],
+                getAudioTracks: () => [],
+                getVideoTracks: () => []
+            });
+        };
+    }
 })();
 """
 
