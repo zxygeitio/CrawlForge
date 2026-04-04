@@ -899,46 +899,6 @@ CDP_HOOK_INJECT = """
 
 # ============== 深度反检测：navigator.webdriver 保护 ==============
 # 很多站点反复检查 navigator.webdriver，如果我们在注入时用了 configurable: true
-# 站点 JS 可以 later 重新 define 为 true。用 get + defineProperty 双重保护
-
-WEBDRIVER_PROTECT_INJECT = """
-// 深度保护 navigator.webdriver - 防止被重定义
-(function() {
-    'use strict';
-
-    // 先尝试删掉现有的（如果 configurable: true）
-    try { delete navigator.webdriver; } catch(e) {}
-
-    // 用 try-catch 包裹 defineProperty，防止已存在的 configurable:false 导致冲突
-    try {
-        Object.defineProperty(navigator, 'webdriver', {
-            get: function() { return false; },
-            set: function() {},
-            configurable: false,
-            enumerable: true
-        });
-    } catch(e) {
-        // 如果仍然失败，尝试直接赋值
-        try { navigator.webdriver = false; } catch(e2) {}
-    }
-
-    // 同时保护 window.webdriver
-    try { delete window.webdriver; } catch(e) {}
-    try {
-        Object.defineProperty(window, 'webdriver', {
-            get: function() { return false; },
-            set: function() {},
-            configurable: false,
-            enumerable: true
-        });
-    } catch(e) {
-        try { window.webdriver = false; } catch(e2) {}
-    }
-
-    console.log('[Stealth] navigator.webdriver protected');
-})();
-"""
-
 # ============== 深度反检测：window.chrome 完整伪装 ==============
 # 小红书等检测 window.chrome 对象是否存在 + 特定方法实现
 # 已有 AUTOMATION_HOOK_INJECT 只覆盖 chrome.runtime，这里补充完整 chrome 对象
@@ -1479,10 +1439,7 @@ class StealthBrowser:
         # 1. 清除 Playwright CDP 协议暴露的全局变量（必须在最前）
         await page.evaluate(CDP_HOOK_INJECT)
 
-        # 2. 保护 navigator.webdriver 禁止重定义
-        await page.evaluate(WEBDRIVER_PROTECT_INJECT)
-
-        # 3. 完整伪装 window.chrome 对象
+        # 2. 完整伪装 window.chrome 对象
         await page.evaluate(CHROME_OBJECT_DEEP_INJECT)
 
         # 注入基础反检测脚本
