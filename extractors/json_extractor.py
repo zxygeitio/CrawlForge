@@ -14,7 +14,7 @@ from .base import (
     ExtractionRule,
     CompositeExtractor
 )
-from ..utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 @dataclass

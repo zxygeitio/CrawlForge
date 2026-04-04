@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from ...utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 from .base import BaseCaptchaHandler, CaptchaResult, CaptchaType
 
 

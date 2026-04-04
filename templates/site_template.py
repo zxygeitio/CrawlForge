@@ -7,11 +7,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..core.har_parser import HARLog, HARParser
-from ..core.signature import SignatureGenerator, SignatureConfig, SignatureAlgorithm
-from ..extractors.base import BaseExtractor, ExtractionResult
-from ..utils.logger import Logger, get_logger
-from ..utils.network import NetworkClient, RequestConfig, HttpMethod
+from core.har_parser import HARLog, HARParser
+from core.signature import SignatureGenerator, SignatureConfig, SignatureAlgorithm
+from extractors.base import BaseExtractor, ExtractionResult
+from utils.logger import Logger, get_logger
+from utils.network import NetworkClient, RequestConfig, HttpMethod
 
 
 @dataclass

@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from ..utils.logger import Logger, get_logger
-from ..utils.crypto_utils import MD5, SHA, AES, DES, RSA, Base64Encoder
+from utils.logger import Logger, get_logger
+from utils.crypto_utils import MD5, SHA, AES, DES, RSA, Base64Encoder
 
 
 class CryptoType(Enum):

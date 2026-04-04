@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional, Type, Union
 
-from ..utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 class RetryStrategy(Enum):

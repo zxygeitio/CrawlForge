@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 
-from ...utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 class CaptchaType(Enum):

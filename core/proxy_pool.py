@@ -13,7 +13,7 @@ from typing import Optional
 
 import redis.asyncio as redis
 
-from ..utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 class ProxyProtocol(Enum):

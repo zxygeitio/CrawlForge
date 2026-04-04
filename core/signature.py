@@ -8,10 +8,11 @@ import hmac
 import time
 import uuid
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Callable, Optional, Union
 
-from ..utils.logger import Logger, get_logger
-from ..utils.crypto_utils import MD5, SHA
+from utils.logger import Logger, get_logger
+from utils.crypto_utils import MD5, SHA
 
 
 class SignatureAlgorithm(Enum):

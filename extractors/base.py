@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
-from ..utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 T = TypeVar("T")

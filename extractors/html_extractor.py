@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Optional, Union
 
 from .base import BaseExtractor, ExtractionResult, ExtractionRule
-from ..utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 try:

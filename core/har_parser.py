@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
-from ..utils.logger import Logger, get_logger
+from utils.logger import Logger, get_logger
 
 
 @dataclass
