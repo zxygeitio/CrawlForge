@@ -906,29 +906,34 @@ WEBDRIVER_PROTECT_INJECT = """
 (function() {
     'use strict';
 
-    // 先尝试删掉现有的
-    try {
-        delete navigator.webdriver;
-    } catch(e) {}
+    // 先尝试删掉现有的（如果 configurable: true）
+    try { delete navigator.webdriver; } catch(e) {}
 
-    // 用 Object.defineProperty 重新定义，禁止重写
-    Object.defineProperty(navigator, 'webdriver', {
-        get: function() { return false; },
-        set: function() {},
-        configurable: false,   // 关键：禁止重新 defineProperty
-        enumerable: true
-    });
+    // 用 try-catch 包裹 defineProperty，防止已存在的 configurable:false 导致冲突
+    try {
+        Object.defineProperty(navigator, 'webdriver', {
+            get: function() { return false; },
+            set: function() {},
+            configurable: false,
+            enumerable: true
+        });
+    } catch(e) {
+        // 如果仍然失败，尝试直接赋值
+        try { navigator.webdriver = false; } catch(e2) {}
+    }
 
     // 同时保护 window.webdriver
+    try { delete window.webdriver; } catch(e) {}
     try {
-        delete window.webdriver;
-    } catch(e) {}
-    Object.defineProperty(window, 'webdriver', {
-        get: function() { return false; },
-        set: function() {},
-        configurable: false,
-        enumerable: true
-    });
+        Object.defineProperty(window, 'webdriver', {
+            get: function() { return false; },
+            set: function() {},
+            configurable: false,
+            enumerable: true
+        });
+    } catch(e) {
+        try { window.webdriver = false; } catch(e2) {}
+    }
 
     console.log('[Stealth] navigator.webdriver protected');
 })();

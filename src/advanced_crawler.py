@@ -322,14 +322,7 @@ class AdvancedCrawler:
             logger.warning(f"Failed to save cookies: {e}")
 
     def _get_persistent_loop(self) -> asyncio.AbstractEventLoop:
-        """
-        获取或创建 persistent event loop。
-
-        关键设计：
-        - asyncio.run() 每次创建新 loop，多实例时会绑到错误的 loop
-        - persistent loop 从创建起一直被同一个实例复用，browser/context 永远绑正确的 loop
-        - 新 loop 用 new_event_loop() 而非 get_event_loop()，避免在已有 loop 时冲突
-        """
+        """获取 persistent loop（供 close 等同步调用使用）"""
         if self._loop is None or self._loop.is_closed():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
@@ -383,26 +376,25 @@ class AdvancedCrawler:
         async def _async_impl():
             """真正的异步实现"""
             page = None
+            browser = None
+            context = None
             try:
-                # 复用浏览器实例，避免每次请求都启动/关闭浏览器（启动约1-2秒）
-                if self._browser is None:
-                    self._browser = await self.stealth_browser.launch()
+                # 每次请求创建新的 browser + context
+                # 不复用 _browser/_context（跨 asyncio.run() loop 会导致 "different loop" 错误）
+                browser = await self.stealth_browser.launch()
+                context = await self.stealth_browser.create_context()
 
-                # 复用 context，或创建新的（带完整反检测注入）
-                if self._context is None:
-                    self._context = await self.stealth_browser.create_context()
-
-                    # Cookie 持久化：从文件加载 cookies 到 context
-                    if self.config.cookie_persistence:
-                        saved_cookies = self._load_cookies()
-                        if saved_cookies:
-                            try:
-                                for cookie in saved_cookies:
-                                    if "name" in cookie and "value" in cookie:
-                                        await self._context.add_cookies([cookie])
-                                logger.info(f"Applied {len(saved_cookies)} cookies to context")
-                            except Exception as e:
-                                logger.warning(f"Failed to apply cookies to context: {e}")
+                # Cookie 持久化：从文件加载 cookies 到 context
+                if self.config.cookie_persistence:
+                    saved_cookies = self._load_cookies()
+                    if saved_cookies:
+                        try:
+                            for cookie in saved_cookies:
+                                if "name" in cookie and "value" in cookie:
+                                    await context.add_cookies([cookie])
+                            logger.info(f"Applied {len(saved_cookies)} cookies to context")
+                        except Exception as e:
+                            logger.warning(f"Failed to apply cookies to context: {e}")
 
                 # XHR 响应拦截：收集匹配的 API 响应
                 xhr_responses = []
@@ -424,7 +416,7 @@ class AdvancedCrawler:
                         pass
 
                 # create_page 应用所有反检测JS（STealth_JS_INJECT + 12个增强脚本）
-                page = await self.stealth_browser.create_page(self._context)
+                page = await self.stealth_browser.create_page(context)
 
                 # 注册 XHR 拦截（必须在 goto 之前）
                 if self.config.xhr_intercept:
@@ -465,7 +457,7 @@ class AdvancedCrawler:
                 # 更新持久化 cookie
                 if self.config.cookie_persistence:
                     try:
-                        cookies = await self._context.cookies()
+                        cookies = await context.cookies()
                         if cookies:
                             self._save_cookies(cookies)
                     except Exception as e:
@@ -481,8 +473,18 @@ class AdvancedCrawler:
                         await page.close()
                     except Exception:
                         pass
+                if context:
+                    try:
+                        await context.close()
+                    except Exception:
+                        pass
+                if browser:
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
 
-        return self._get_persistent_loop().run_until_complete(_async_impl())
+        return asyncio.run(_async_impl())
 
     async def _get_async_session(self) -> AsyncSession:
         """获取或创建异步Session（连接池复用）"""
@@ -721,16 +723,15 @@ class AdvancedCrawler:
             self._session.close()
 
         async def _async_close():
-            # Cookie 持久化：关闭前保存
-            if self.config.cookie_persistence and self._context:
-                try:
-                    cookies = await self._context.cookies()
-                    if cookies:
-                        self._save_cookies(cookies)
-                except Exception as e:
-                    logger.warning(f"Failed to save cookies on close: {e}")
             if self._context:
                 try:
+                    if self.config.cookie_persistence:
+                        try:
+                            cookies = await self._context.cookies()
+                            if cookies:
+                                self._save_cookies(cookies)
+                        except Exception as e:
+                            logger.warning(f"Failed to save cookies on close: {e}")
                     await self._context.close()
                 except Exception:
                     pass
@@ -744,15 +745,7 @@ class AdvancedCrawler:
             if self.stealth_browser:
                 await self.stealth_browser.close()
 
-        loop = self._get_persistent_loop()
-        # 如果 loop 已经在运行（异步上下文中），用 run_until_complete；
-        # 否则启动它来执行 close
-        if loop.is_running():
-            loop.run_until_complete(_async_close())
-        else:
-            loop.run_until_complete(_async_close())
-            loop.close()
-            self._loop = None
+        asyncio.run(_async_close())
 
         if hasattr(self.proxy_pool, 'stop_health_checker'):
             self.proxy_pool.stop_health_checker()
