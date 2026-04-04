@@ -338,8 +338,9 @@ class AdvancedCrawler:
             if self._context is None:
                 self._context = self.stealth_browser.create_context()
 
-            # create_page 应用所有反检测JS（STealth_JS_INJECT + 所有增强脚本）
-            page = self._context.new_page()
+            # create_page 应用所有反检测JS（STealth_JS_INJECT + 12个增强脚本）
+            # 必须调用 create_page，不能用 _context.new_page()（后者是裸的 Playwright 调用，无任何注入）
+            page = self.stealth_browser.create_page(self._context)
 
             # 额外注入（可选hooks，叠加在create_page已注入的基础上）
             if hooks:
