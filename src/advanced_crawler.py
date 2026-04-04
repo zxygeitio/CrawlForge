@@ -365,126 +365,109 @@ class AdvancedCrawler:
         if not self.stealth_browser:
             return None
 
-        page = None
-        try:
-            loop = asyncio.get_event_loop()
-
-            # 复用浏览器实例，避免每次请求都启动/关闭浏览器（启动约1-2秒）
-            if self._browser is None:
-                self._browser = loop.run_until_complete(
-                    self.stealth_browser.launch()
-                )
-
-            # 复用 context，或创建新的（带完整反检测注入）
-            if self._context is None:
-                self._context = loop.run_until_complete(
-                    self.stealth_browser.create_context()
-                )
-
-                # Cookie 持久化：从文件加载 cookies 到 context
-                if self.config.cookie_persistence:
-                    saved_cookies = self._load_cookies()
-                    if saved_cookies:
-                        try:
-                            # 添加 cookie 到 context（Playwright 格式）
-                            for cookie in saved_cookies:
-                                # 确保必要字段存在
-                                if "name" in cookie and "value" in cookie:
-                                    loop.run_until_complete(
-                                        self._context.add_cookies([cookie])
-                                    )
-                            logger.info(f"Applied {len(saved_cookies)} cookies to context")
-                        except Exception as e:
-                            logger.warning(f"Failed to apply cookies to context: {e}")
-
-            # XHR 响应拦截：收集匹配的 API 响应
-            xhr_responses = []
-            xhr_patterns = self.config.xhr_url_patterns or []
-
-            def on_response(response):
-                """XHR/ fetch 响应拦截"""
-                if not self.config.xhr_intercept:
-                    return
-                # 无视非文档请求
-                if response.resource_type not in ("xhr", "fetch"):
-                    return
-                resp_url = response.url
-                # 如果配置了 URL 模式，只收集匹配的
-                if xhr_patterns and not any(p in resp_url for p in xhr_patterns):
-                    return
-                try:
-                    body = response.text()
-                    xhr_responses.append({"url": resp_url, "body": body, "status": response.status})
-                except Exception:
-                    pass
-
-            # create_page 应用所有反检测JS（STealth_JS_INJECT + 12个增强脚本）
-            # 必须调用 create_page，不能用 _context.new_page()（后者是裸的 Playwright 调用，无任何注入）
-            page = loop.run_until_complete(
-                self.stealth_browser.create_page(self._context)
-            )
-
-            # 注册 XHR 拦截（必须在 goto 之前）
-            if self.config.xhr_intercept:
-                page.on("response", on_response)
-
-            # 额外注入（可选hooks，叠加在create_page已注入的基础上）
-            if hooks:
-                JSHookManager.install_hooks(page, hooks)
-
-            # 使用配置中的 wait_until（默认为 load）
-            effective_wait_until = wait_until or self.config.playwright_wait_until
-            response = loop.run_until_complete(
-                page.goto(url, wait_until=effective_wait_until)
-            )
-
-            if js_code:
-                result = loop.run_until_complete(page.evaluate(js_code))
-                return result
-
-            # 等待页面稳定后再获取 content
-            networkidle_timeout = self.config.playwright_networkidle_timeout // 1000  # ms -> s
+        async def _async_impl():
+            """真正的异步实现"""
+            page = None
             try:
-                loop.run_until_complete(
-                    page.wait_for_load_state("networkidle", timeout=networkidle_timeout)
-                )
-            except Exception:
-                pass  # 超时时继续尝试获取 content
+                # 复用浏览器实例，避免每次请求都启动/关闭浏览器（启动约1-2秒）
+                if self._browser is None:
+                    self._browser = await self.stealth_browser.launch()
 
-            # 额外等待，给 JS 动态渲染留时间（如 SPA、React/Vue）
-            extra_wait = self.config.playwright_wait_after_load / 1000  # ms -> s
-            if extra_wait > 0:
-                time.sleep(extra_wait)
+                # 复用 context，或创建新的（带完整反检测注入）
+                if self._context is None:
+                    self._context = await self.stealth_browser.create_context()
 
-            content = loop.run_until_complete(page.content())
-            result = {
-                "status": response.status if response else None,
-                "content": content
-            }
+                    # Cookie 持久化：从文件加载 cookies 到 context
+                    if self.config.cookie_persistence:
+                        saved_cookies = self._load_cookies()
+                        if saved_cookies:
+                            try:
+                                for cookie in saved_cookies:
+                                    if "name" in cookie and "value" in cookie:
+                                        await self._context.add_cookies([cookie])
+                                logger.info(f"Applied {len(saved_cookies)} cookies to context")
+                            except Exception as e:
+                                logger.warning(f"Failed to apply cookies to context: {e}")
 
-            # 附加 XHR 拦截数据
-            if self.config.xhr_intercept and xhr_responses:
-                result["xhr_responses"] = xhr_responses
+                # XHR 响应拦截：收集匹配的 API 响应
+                xhr_responses = []
+                xhr_patterns = self.config.xhr_url_patterns or []
 
-            # 更新持久化 cookie（如果启用）
-            if self.config.cookie_persistence:
+                def on_response(response):
+                    """XHR/ fetch 响应拦截"""
+                    if not self.config.xhr_intercept:
+                        return
+                    if response.resource_type not in ("xhr", "fetch"):
+                        return
+                    resp_url = response.url
+                    if xhr_patterns and not any(p in resp_url for p in xhr_patterns):
+                        return
+                    try:
+                        body = response.text()
+                        xhr_responses.append({"url": resp_url, "body": body, "status": response.status})
+                    except Exception:
+                        pass
+
+                # create_page 应用所有反检测JS（STealth_JS_INJECT + 12个增强脚本）
+                page = await self.stealth_browser.create_page(self._context)
+
+                # 注册 XHR 拦截（必须在 goto 之前）
+                if self.config.xhr_intercept:
+                    page.on("response", on_response)
+
+                # 额外注入（可选hooks）
+                if hooks:
+                    JSHookManager.install_hooks(page, hooks)
+
+                # 使用配置中的 wait_until（默认为 load）
+                effective_wait_until = wait_until or self.config.playwright_wait_until
+                response = await page.goto(url, wait_until=effective_wait_until)
+
+                if js_code:
+                    return await page.evaluate(js_code)
+
+                # 等待页面稳定后再获取 content
+                networkidle_timeout = self.config.playwright_networkidle_timeout // 1000
                 try:
-                    cookies = loop.run_until_complete(self._context.cookies())
-                    if cookies:
-                        self._save_cookies(cookies)
-                except Exception as e:
-                    logger.warning(f"Failed to save cookies: {e}")
-
-            return result
-        except Exception as e:
-            logger.exception(f"Playwright Error for {url}: {e}")
-            return None
-        finally:
-            if page:
-                try:
-                    loop.run_until_complete(page.close())
+                    await page.wait_for_load_state("networkidle", timeout=networkidle_timeout)
                 except Exception:
                     pass
+
+                # 额外等待，给 JS 动态渲染留时间
+                extra_wait = self.config.playwright_wait_after_load / 1000
+                if extra_wait > 0:
+                    await asyncio.sleep(extra_wait)
+
+                content = await page.content()
+                result = {
+                    "status": response.status if response else None,
+                    "content": content
+                }
+
+                if self.config.xhr_intercept and xhr_responses:
+                    result["xhr_responses"] = xhr_responses
+
+                # 更新持久化 cookie
+                if self.config.cookie_persistence:
+                    try:
+                        cookies = await self._context.cookies()
+                        if cookies:
+                            self._save_cookies(cookies)
+                    except Exception as e:
+                        logger.warning(f"Failed to save cookies: {e}")
+
+                return result
+            except Exception as e:
+                logger.exception(f"Playwright Error for {url}: {e}")
+                return None
+            finally:
+                if page:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+
+        return asyncio.run(_async_impl())
 
     async def _get_async_session(self) -> AsyncSession:
         """获取或创建异步Session（连接池复用）"""
@@ -721,33 +704,33 @@ class AdvancedCrawler:
         """关闭资源"""
         if hasattr(self, '_session') and self._session:
             self._session.close()
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        # Cookie 持久化：关闭前保存
-        if self.config.cookie_persistence and self._context:
-            try:
-                cookies = loop.run_until_complete(self._context.cookies())
-                if cookies:
-                    self._save_cookies(cookies)
-            except Exception as e:
-                logger.warning(f"Failed to save cookies on close: {e}")
-        if self._context:
-            try:
-                loop.run_until_complete(self._context.close())
-            except Exception:
-                pass
-            self._context = None
-        if hasattr(self, '_browser') and self._browser:
-            try:
-                loop.run_until_complete(self._browser.close())
-            except Exception:
-                pass
-            self._browser = None
-        if self.stealth_browser:
-            loop.run_until_complete(self.stealth_browser.close())
+
+        async def _async_close():
+            # Cookie 持久化：关闭前保存
+            if self.config.cookie_persistence and self._context:
+                try:
+                    cookies = await self._context.cookies()
+                    if cookies:
+                        self._save_cookies(cookies)
+                except Exception as e:
+                    logger.warning(f"Failed to save cookies on close: {e}")
+            if self._context:
+                try:
+                    await self._context.close()
+                except Exception:
+                    pass
+                self._context = None
+            if hasattr(self, '_browser') and self._browser:
+                try:
+                    await self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
+            if self.stealth_browser:
+                await self.stealth_browser.close()
+
+        asyncio.run(_async_close())
+
         if hasattr(self.proxy_pool, 'stop_health_checker'):
             self.proxy_pool.stop_health_checker()
 
