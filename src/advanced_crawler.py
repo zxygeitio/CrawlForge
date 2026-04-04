@@ -250,6 +250,7 @@ class AdvancedCrawler:
         # Playwright 浏览器复用
         self._browser = None
         self._context = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None  # persistent loop，避免多实例 loop 冲突
         # Cookie 持久化
         self._cookies_path = f"{config.name}_cookies.json"
         self._xhr_responses: list = []
@@ -319,6 +320,20 @@ class AdvancedCrawler:
             logger.info(f"Saved {len(cookies)} cookies to {self._cookies_path}")
         except Exception as e:
             logger.warning(f"Failed to save cookies: {e}")
+
+    def _get_persistent_loop(self) -> asyncio.AbstractEventLoop:
+        """
+        获取或创建 persistent event loop。
+
+        关键设计：
+        - asyncio.run() 每次创建新 loop，多实例时会绑到错误的 loop
+        - persistent loop 从创建起一直被同一个实例复用，browser/context 永远绑正确的 loop
+        - 新 loop 用 new_event_loop() 而非 get_event_loop()，避免在已有 loop 时冲突
+        """
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+        return self._loop
 
     def _get_proxy(self) -> Optional[dict]:
         if not self.config.proxy_enabled:
@@ -467,7 +482,7 @@ class AdvancedCrawler:
                     except Exception:
                         pass
 
-        return asyncio.run(_async_impl())
+        return self._get_persistent_loop().run_until_complete(_async_impl())
 
     async def _get_async_session(self) -> AsyncSession:
         """获取或创建异步Session（连接池复用）"""
@@ -729,7 +744,15 @@ class AdvancedCrawler:
             if self.stealth_browser:
                 await self.stealth_browser.close()
 
-        asyncio.run(_async_close())
+        loop = self._get_persistent_loop()
+        # 如果 loop 已经在运行（异步上下文中），用 run_until_complete；
+        # 否则启动它来执行 close
+        if loop.is_running():
+            loop.run_until_complete(_async_close())
+        else:
+            loop.run_until_complete(_async_close())
+            loop.close()
+            self._loop = None
 
         if hasattr(self.proxy_pool, 'stop_health_checker'):
             self.proxy_pool.stop_health_checker()
