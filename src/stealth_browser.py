@@ -830,6 +830,574 @@ AUTOMATION_HOOK_INJECT = """
 })();
 """
 
+# ============== 深度反检测：CDP 协议特征清除 ==============
+# Playwright/Puppeteer 会向 window 注入 __cdc__, __FST__ 等 CDP 协议相关全局变量
+# 小红书/Bilibili 等站点直接检测这些属性是否存在
+
+CDP_HOOK_INJECT = """
+// 清除 Playwright CDP 协议暴露的全局属性
+(function() {
+    'use strict';
+
+    // 1. 删除所有可疑的 __cdc* / __FST* 等 Playwright 注入属性
+    const cdcPatterns = [
+        '__FST__', '__STREAMING__', '__INITIAL_STATE__',
+        '__APM_COMBO_CACHE_GROUP_V2__', '__APM_COMBO_CACHE_GROUP__',
+        '__VUE_INSTANCE_SETTERS__', '__VUE_SSR_SETTERS__',
+        '__APM__ClientResourceError__', '__APM__ClientResourceError__Buffer__',
+        '__vueuse_ssr_handlers__', '__VUE__', '__APM__',
+        '__$c', '__pure_keys', '__XHS_AI_DEBUG__',
+        '__debugger', '__bc', 'SDK__SESSION__ID',
+        'chrome',  // Playwright 暴露的 chrome 对象
+    ];
+
+    cdcPatterns.forEach(function(key) {
+        try {
+            if (key in window) {
+                // 尝试删掉，如果删不掉就尝试设为 undefined
+                if (window[key] && typeof window[key] === 'object') {
+                    // 对于对象，尝试清空其属性
+                    try {
+                        Object.keys(window[key]).forEach(function(subKey) {
+                            try {
+                                delete window[key][subKey];
+                            } catch(e) {}
+                        });
+                    } catch(e) {}
+                }
+                // 尝试直接删除 configurable 的属性
+                const descriptor = Object.getOwnPropertyDescriptor(window, key);
+                if (descriptor && descriptor.configurable) {
+                    delete window[key];
+                } else {
+                    // 不可删除的，设为空
+                    try { window[key] = undefined; } catch(e) {}
+                }
+            }
+        } catch(e) {}
+    });
+
+    // 2. 拦截 window 对象上所有包含 'cdc' 或 'playwright' 的属性并删除
+    Object.getOwnPropertyNames(window).forEach(function(key) {
+        try {
+            if (key.toLowerCase().includes('cdc') ||
+                key.toLowerCase().includes('playwright') ||
+                key.toLowerCase().includes('puppeteer') ||
+                key.toLowerCase().includes('fft') ||
+                key.toLowerCase().includes('fst')) {
+                const descriptor = Object.getOwnPropertyDescriptor(window, key);
+                if (descriptor && descriptor.configurable) {
+                    delete window[key];
+                }
+            }
+        } catch(e) {}
+    });
+
+    console.log('[Stealth] CDP protocol globals cleared');
+})();
+"""
+
+# ============== 深度反检测：navigator.webdriver 保护 ==============
+# 很多站点反复检查 navigator.webdriver，如果我们在注入时用了 configurable: true
+# 站点 JS 可以 later 重新 define 为 true。用 get + defineProperty 双重保护
+
+WEBDRIVER_PROTECT_INJECT = """
+// 深度保护 navigator.webdriver - 防止被重定义
+(function() {
+    'use strict';
+
+    // 先尝试删掉现有的
+    try {
+        delete navigator.webdriver;
+    } catch(e) {}
+
+    // 用 Object.defineProperty 重新定义，禁止重写
+    Object.defineProperty(navigator, 'webdriver', {
+        get: function() { return false; },
+        set: function() {},
+        configurable: false,   // 关键：禁止重新 defineProperty
+        enumerable: true
+    });
+
+    // 同时保护 window.webdriver
+    try {
+        delete window.webdriver;
+    } catch(e) {}
+    Object.defineProperty(window, 'webdriver', {
+        get: function() { return false; },
+        set: function() {},
+        configurable: false,
+        enumerable: true
+    });
+
+    console.log('[Stealth] navigator.webdriver protected');
+})();
+"""
+
+# ============== 深度反检测：window.chrome 完整伪装 ==============
+# 小红书等检测 window.chrome 对象是否存在 + 特定方法实现
+# 已有 AUTOMATION_HOOK_INJECT 只覆盖 chrome.runtime，这里补充完整 chrome 对象
+
+CHROME_OBJECT_DEEP_INJECT = """
+// 完整伪装 window.chrome 对象（模拟真实 Chrome 浏览器）
+(function() {
+    'use strict';
+
+    // 如果已有 chrome，先彻底清空
+    if (window.chrome) {
+        try {
+            Object.keys(window.chrome).forEach(function(key) {
+                try { delete window.chrome[key]; } catch(e) {}
+            });
+        } catch(e) {}
+    }
+
+    // 完整重建 chrome 对象（真实 Chrome 的结构）
+    window.chrome = {
+        runtime: {
+            connect: function() { return { port: { onMessage: { addListener: function() {} }, postMessage: function() {} } }; },
+            sendMessage: function() { return Promise.resolve({}); },
+            sendNativeMessage: function() { return Promise.resolve({}); },
+            getManifest: function() { return { manifest_version: 3, name: 'Chrome', version: '120.0.0.0' }; },
+            getURL: function(path) { return 'chrome-extension://fake_extension/' + path; },
+            lastError: null,
+            onConnect: { addListener: function() {} },
+            onMessage: { addListener: function() {} },
+            onInstalled: { addListener: function() {} },
+        },
+        storage: {
+            local: {
+                get: function(keys, callback) {
+                    if (callback) callback({});
+                },
+                set: function(data, callback) {
+                    if (callback) callback();
+                },
+                remove: function(keys, callback) {
+                    if (callback) callback();
+                },
+                clear: function(callback) {
+                    if (callback) callback();
+                }
+            },
+            session: {
+                get: function(keys, callback) {
+                    if (callback) callback({});
+                },
+                set: function(data, callback) {
+                    if (callback) callback();
+                }
+            },
+            managed: {
+                get: function(keys, callback) {
+                    if (callback) callback({});
+                }
+            }
+        },
+        identity: {
+            getRedirectURL: function() { return 'https://fake-chrome-identity.appspot.com'; },
+            launchWebAuthFlow: function() { return Promise.resolve('fake_token'); }
+        },
+        permissions: {
+            request: function() { return Promise.resolve({ granted: true }); },
+            contains: function() { return Promise.resolve({ granted: true }); }
+        },
+        power: {
+            requestKeepAwake: function() {},
+            releaseKeepAwake: function() {}
+        },
+        fileSystem: {
+            isRetina: function() { return false; }
+        },
+        app: {
+            getDetails: function() { return { id: 'fake', name: 'Chrome' }; },
+            isInstalled: function() { return false; },
+            launchState: 'unknown'
+        },
+        webstore: {
+            onInlineInstallStarted: { addListener: function() {} },
+            onWebstoreStatusChanged: { addListener: function() {} }
+        },
+        debugging: {
+            attach: function() {},
+            detach: function() {},
+            getTargets: function() { return []; }
+        },
+        // 确保 chrome.csi() 和 chrome.loadTimes() 不报错
+        csi: function() {
+            return {
+                pageT: Date.now(),
+                onloadT: Date.now() - 1000,
+                startT: Date.now() - 2000,
+                transfered: 0,
+                dnEndT: Date.now() - 500
+            };
+        },
+        loadTimes: function() {
+            return {
+                commitLoadTime: 0.1,
+                connectionInfo: 'http/1.1',
+                navigationType: 'Other',
+                numberOfResources: 10,
+                numberOfRobotedResources: 0,
+                numberOfSniffedAutomaticResources: 0,
+                responseTime: 0.05,
+                startLoadTime: Date.now() - 1000,
+                wasAlternateProtocolAvailable: false,
+                wasFetchedViaSpdy: false,
+                wasNpnNegotiated: false,
+                wasProtQuic: false
+            };
+        },
+        // 禁用特性
+        getPlatformInfo: function() { return { os: 'win', arch: 'x64' }; },
+        experimental: {},
+        forceAppInstalled: false,
+        inIncognitoContext: false,
+        installedApps: {
+            get: function() {},
+            launch: function() {},
+            status: 'not_installed'
+        },
+        management: {
+            get: function() { return Promise.resolve({ id: 'fake', name: 'App' }); },
+            getAll: function() { return Promise.resolve([]); },
+            getPermissionWarnings: function() { return Promise.resolve([]); },
+            launchApp: function() {},
+            requestPermissions: function() { return Promise.resolve({ granted: true }); },
+            setEnabled: function() {},
+            uninstall: function() { return Promise.resolve(); }
+        },
+        commands: {
+            getAll: function() { return Promise.resolve([]); },
+            onCommand: { addListener: function() {} }
+        },
+        notifications: {
+            create: function() { return 'fake_notification_id'; },
+            getAll: function() { return Promise.resolve({}); },
+            clear: function() { return Promise.resolve(true); },
+            onClosed: { addListener:function(){} },
+            onClicked: { addListener:function(){} },
+            onPermissionLevelChanged: { addListener:function(){} },
+            onShowSettings: { addListener:function(){} }
+        },
+        tabs: {
+            create: function() {},
+            get: function() { return Promise.resolve({ id: 1, url: '' }); },
+            query: function() { return Promise.resolve([]); },
+            sendMessage: function() {},
+            onActivated: { addListener: function() {} },
+            onCreated: { addListener: function() {} },
+            onRemoved: { addListener: function() {} },
+            onUpdated: { addListener: function() {} }
+        },
+        windows: {
+            create: function() {},
+            get: function() { return Promise.resolve({ id: 1 }); },
+            getAll: function() { return Promise.resolve([]); },
+            onCreated: { addListener: function() {} },
+            onRemoved: { addListener: function() {} }
+        },
+        browsingData: {
+            settings: function() { return Promise.resolve({options: {}, dataToRemove: {}}); },
+            remove: function() { return Promise.resolve(); },
+            removeAppcache: function() { return Promise.resolve(); },
+            removeCache: function() { return Promise.resolve(); },
+            removeCookies: function() { return Promise.resolve(); },
+            removeDownloads: function() { return Promise.resolve(); },
+            removeFileSystems: function() { return Promise.resolve(); },
+            removeFormData: function() { return Promise.resolve(); },
+            removeHistory: function() { return Promise.resolve(); },
+            removeIndexedDB: function() { return Promise.resolve(); },
+            removeLocalStorage: function() { return Promise.resolve(); },
+            removePluginData: function() { return Promise.resolve(); },
+            removePasswords: function() { return Promise.resolve(); },
+            removeServiceWorkers: function() { return Promise.resolve(); },
+            removeWebSQL: function() { return Promise.resolve(); }
+        },
+        contentSettings: {
+            getResourceIdentifiers: function() { return Promise.resolve([]); },
+            get: function() { return Promise.resolve({ setting: 'allow' }); },
+            set: function() {},
+            clear: function() {},
+            onChange: { addListener: function() {} }
+        },
+        contextMenus: {
+            create: function() { return 'fake_menu_id'; },
+            update: function() {},
+            remove: function() {},
+            removeAll: function() {},
+            onClicked: { addListener: function() {} }
+        },
+        cookieStore: {
+            getAll: function() { return Promise.resolve([]); },
+            getAllCookieStores: function() { return Promise.resolve([]); }
+        },
+        downloads: {
+            download: function() { return Promise.resolve(1); },
+            search: function() { return Promise.resolve([]); },
+            pause: function() {},
+            resume: function() {},
+            cancel: function() {},
+            erase: function() { return Promise.resolve([]); },
+            open: function() {},
+            show: function() {},
+            onCreated: { addListener: function() {} },
+            onErased: { addListener: function() {} },
+            onChanged: { addListener: function() {} }
+        },
+        fontSettings: {
+            getFontList: function() { return Promise.resolve([]); },
+            getDefaultFontSize: function() { return Promise.resolve({ pixelSize: 16 }); },
+            setDefaultFontSize: function() {},
+            getFontScale: function() { return Promise.resolve({ fontScale: 1.0 }); },
+            setFontScale: function() {},
+            getMinimumFontSize: function() { return Promise.resolve({ pixelSize: 0 }); },
+            setMinimumFontSize: function() {},
+            onDefaultFontSizeChanged: { addListener: function() {} },
+            onFontChanged: { addListener: function() {} }
+        },
+        gcm: {
+            register: function() {},
+            unregister: function() {},
+            getInboundId: function() { return Promise.resolve('fake_inbound_id'); },
+            onMessage: { addListener: function() {} },
+            onSinkAvailable: { addListener: function() {} }
+        },
+        history: {
+            search: function() { return Promise.resolve([]); },
+            getVisits: function() { return Promise.resolve([]); },
+            addUrl: function() {},
+            deleteUrl: function() {},
+            deleteRange: function() {},
+            deleteAll: function() {},
+            setUrlVisitTime: function() {},
+            onVisited: { addListener: function() {} },
+            onVisitRemoved: { addListener: function() {} }
+        },
+        i18n: {
+            getAcceptLanguages: function() { return Promise.resolve(['zh-CN', 'zh', 'en']); },
+            getMessage: function() { return ''; },
+            getUILanguage: function() { return 'zh-CN'; }
+        },
+        identity: {
+            getProfileUserInfo: function() { return Promise.resolve({ id: 'fake', email: '' }); }
+        },
+        instanceID: {
+            get: function() { return Promise.resolve({ id: 'fake_instance_id' }); },
+            getCreationTime: function() { return Promise.resolve(Date.now()); },
+            getToken: function() { return Promise.resolve('fake_token'); },
+            tokenCache: {
+                remove: function() {},
+                addListener: function() {}
+            },
+            onTokenRefresh: { addListener: function() {} }
+        },
+        loginState: {
+            get: function() { return Promise.resolve({ account: null, isExpanded: false, isLoggedIn: false }); }
+        },
+        metrics: {
+            getBucket: function() { return 0; },
+            recordBoolean: function() {},
+            recordCount: function() {},
+            recordCountHistogram: function() {},
+            recordCurrency: function() {},
+            recordEvent: function() {},
+            recordMediumCount: function() {},
+            recordPercentage: function() {},
+            recordSparseCount: function() {},
+            recordSparseHistogram: function() {},
+            recordTime: function() {},
+            recordTimeHistogram: function() {},
+            recordUserAction: function() {}
+        },
+        networking: {
+            config: {
+                getProxySettings: function() { return Promise.resolve({ proxyRules: '' }); },
+                addProxyOptions: function() {},
+                onProxyError: { addListener: function() {} }
+            }
+        },
+        platformKeys: {
+            getClientCertificate: function() { return Promise.resolve(null); },
+            selectClientCertificates: function() { return Promise.resolve([]); },
+            verifyTLSServerCertificate: function() { return Promise.resolve({ valid: true }); }
+        },
+        printerProvider: {
+            onPrintJobCancelled: { addListener: function() {} },
+            onPrintJobError: { addListener: function() {} },
+            onPrintJobStarted: { addListener: function() {} },
+            onPrintJobsUpdated: { addListener: function() {} },
+            getPrinters: function() { return Promise.resolve([]); },
+            getPrinterInfo: function() { return Promise.resolve({}); }
+        },
+        privacy: {
+            websites: {
+                getThirdPartyBlockingEnabled: function() { return Promise.resolve({ value: false }); },
+                setThirdPartyBlockingEnabled: function() {},
+                getTrackingProtectionEnabled: function() { return Promise.resolve({ value: false }); }
+            },
+            network: {
+                getPredictionEnabled: function() { return Promise.resolve({ value: true }); },
+                setPredictionEnabled: function() {},
+                getPrivacyBadgingEnabled: function() { return Promise.resolve({ value: false }); },
+                setPrivacyBadgingEnabled: function() {},
+                getWebRTCIPHandlingPolicy: function() { return Promise.resolve({ value: 'default' }); },
+                setWebRTCIPHandlingPolicy: function() {}
+            },
+            services: {
+                getAlternateErrorPagesEnabled: function() { return Promise.resolve({ value: false }); },
+                setAlternateErrorPagesEnabled: function() {},
+                getAutofillAddressEnabled: function() { return Promise.resolve({ value: true }); },
+                setAutofillAddressEnabled: function() {},
+                getAutofillCreditCardEnabled: function() { return Promise.resolve({ value: true }); },
+                setAutofillCreditCardEnabled: function() {},
+                getPasswordLeakDetectionEnabled: function() { return Promise.resolve({ value: false }); },
+                setPasswordLeakDetectionEnabled: function() {},
+                getSafeBrowsingEnabled: function() { return Promise.resolve({ value: true }); },
+                setSafeBrowsingEnabled: function() {},
+                getSearchSuggestEnabled: function() { return Promise.resolve({ value: true }); },
+                setSearchSuggestEnabled: function() {},
+                getSpellingServiceEnabled: function() { return Promise.resolve({ value: false }); },
+                setSpellingServiceEnabled: function() {},
+                getTranslationServiceEnabled: function() { return Promise.resolve({ value: false }); },
+                setTranslationServiceEnabled: function() {}
+            },
+            onChange: { addListener: function() {} }
+        },
+        proxy: {
+            getSettings: function() { return Promise.resolve({ proxyRules: '' }); },
+            setSettings: function() {},
+            onProxyError: { addListener: function() {} }
+        },
+        scriptPermissions: {
+            getAllowed: function() { return Promise.resolve([]); },
+            request: function() { return Promise.resolve({ granted: true }); }
+        },
+        session: {
+            get: function() { return Promise.resolve({ id: 'fake_session_id' }); },
+            getTab: function() { return Promise.resolve({ id: 1 }); },
+            getWindow: function() { return Promise.resolve({ id: 1 }); },
+            setTabValue: function() {},
+            getTabValue: function() { return Promise.resolve(null); },
+            removeTabValue: function() {},
+            setWindowValue: function() {},
+            getWindowValue: function() { return Promise.resolve(null); },
+            removeWindowValue: function() {},
+            onChanged: { addListener: function() {} }
+        },
+        socket: {
+            create: function() { return { id: 'fake_socket_id' }; },
+            connect: function() {},
+            send: function() {},
+            read: function() {},
+            disconnect: function() {},
+            destroy: function() {},
+            setKeepAlive: function() {},
+            setNoDelay: function() {},
+            getInfo: function() { return Promise.resolve({}); },
+            getSockets: function() { return Promise.resolve([]); },
+            onData: { addListener: function() {} },
+            onDisconnected: { addListener: function() {} }
+        },
+        system: {
+            cpu: {
+                getInfo: function() { return Promise.resolve({ processors: [] }); },
+                onUpdated: { addListener: function() {} }
+            },
+            memory: {
+                getInfo: function() { return Promise.resolve({ capacity: 8589934592, availableCapacity: 4294967296 }); }
+            },
+            storage: {
+                getInfo: function() { return Promise.resolve([]); },
+                ejectDevice: function() { return Promise.resolve('ejected'); },
+                onAttached: { addListener: function() {} },
+                onDetached: { addListener: function() {} }
+            },
+            display: {
+                getInfo: function() { return Promise.resolve([]); },
+                onDisplayChanged: { addListener: function() {} }
+            }
+        },
+        tabGroups: {
+            get: function() { return Promise.resolve(null); },
+            getAll: function() { return Promise.resolve([]); },
+            move: function() {},
+            update: function() {},
+            onCreated: { addListener: function() {} },
+            onMoved: { addListener: function() {} },
+            onRemoved: { addListener: function() {} },
+            onUpdated: { addListener: function() {} },
+            onGroupCreated: { addListener: function() {} },
+            onGroupClosed: { addListener: function() {} },
+            onGroupMoved: { addListener: function() {} },
+            onGroupUpdated: { addListener: function() {} },
+            onGroupUserActionChanged: { addListener: function() {} }
+        },
+        topSites: {
+            get: function() { return Promise.resolve([]); },
+            onNewTopSite: { addListener: function() {} }
+        },
+        tts: {
+            speak: function() {},
+            stop: function() {},
+            pause: function() {},
+            resume: function() {},
+            isSpeaking: function() { return Promise.resolve(false); },
+            getVoices: function() { return Promise.resolve([]); },
+            onEvent: { addListener: function() {} }
+        },
+        vpnProvider: {
+            createConfig: function() {},
+            destroyConfig: function() {},
+            setParameters: function() {},
+            sendPacket: function() {},
+            onConfigRemoved: { addListener: function() {} },
+            onPacketReceived: { addListener: function() {} },
+            onShowBubble: { addListener: function() {} }
+        },
+        wallpaper: {
+            setWallpaper: function() {},
+            onWallpaperChanged: { addListener: function() {} }
+        },
+        webNavigation: {
+            getFrame: function() { return Promise.resolve({}); },
+            getFrameForTab: function() { return Promise.resolve({}); },
+            getAllFrames: function() { return Promise.resolve([]); },
+            onBeforeNavigate: { addListener: function() {} },
+            onCommitted: { addListener: function() {} },
+            onDOMContentLoaded: { addListener: function() {} },
+            onCompleted: { addListener: function() {} },
+            onErrorOccurred: { addListener: function() {} },
+            onNavigationBlocked: { addListener: function() {} },
+            onCreatedNavigationTarget: { addListener: function() {} },
+            onReferenceFragmentUpdated: { addListener: function() {} },
+            onTabReplaced: { addListener: function() {} },
+            onHistoryStateUpdated: { addListener: function() {} }
+        },
+        webRequest: {
+            onBeforeRequest: { addListener: function() {} },
+            onBeforeSendHeaders: { addListener: function() {} },
+            onSendHeaders: { addListener: function() {} },
+            onHeadersReceived: { addListener: function() {} },
+            onAuthRequired: { addListener: function() {} },
+            onBeforeRedirect: { addListener: function() {} },
+            onResponseStarted: { addListener: function() {} },
+            onCompleted: { addListener: function() {} },
+            onErrorOccurred: { addListener: function() {} },
+            onActionTriggered: { addListener: function() {} }
+        }
+    };
+
+    // 冻结 chrome 对象防止被添加/删除属性
+    try {
+        Object.preventExtensions(window.chrome);
+    } catch(e) {}
+
+    console.log('[Stealth] window.chrome fully mocked');
+})();
+"""
+
 
 class StealthBrowser:
     """
@@ -901,6 +1469,16 @@ class StealthBrowser:
             context = await self.create_context()
 
         page = await context.new_page()
+
+        # ========== 深度反检测（按执行顺序）==========
+        # 1. 清除 Playwright CDP 协议暴露的全局变量（必须在最前）
+        await page.evaluate(CDP_HOOK_INJECT)
+
+        # 2. 保护 navigator.webdriver 禁止重定义
+        await page.evaluate(WEBDRIVER_PROTECT_INJECT)
+
+        # 3. 完整伪装 window.chrome 对象
+        await page.evaluate(CHROME_OBJECT_DEEP_INJECT)
 
         # 注入基础反检测脚本
         await page.evaluate(STealth_JS_INJECT)
