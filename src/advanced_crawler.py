@@ -235,6 +235,7 @@ class AdvancedCrawler:
         self._init_rate_limiter()
         self._init_stealth_browser()
         self._session = requests.Session()
+        self._async_session: Optional[AsyncSession] = None
 
     def _init_storage(self):
         if self.config.storage_type == "mongodb":
@@ -348,16 +349,22 @@ class AdvancedCrawler:
             except Exception as e:
                 logger.warning(f"Failed to close browser resources: {e}")
 
+    async def _get_async_session(self) -> AsyncSession:
+        """获取或创建异步Session（连接池复用）"""
+        if self._async_session is None:
+            self._async_session = AsyncSession()
+        return self._async_session
+
     async def _async_request_curl(self, method: str, url: str, **kwargs) -> Optional[Any]:
         """异步curl_cffi请求"""
         try:
             kwargs.setdefault("timeout", self.config.timeout)
             kwargs.setdefault("impersonate", "chrome")
 
-            async with AsyncSession() as s:
-                if method.upper() == "GET":
-                    return await s.get(url, **kwargs)
-                return await s.post(url, **kwargs)
+            s = await self._get_async_session()
+            if method.upper() == "GET":
+                return await s.get(url, **kwargs)
+            return await s.post(url, **kwargs)
         except Exception as e:
             logger.exception(f"async_curl Error for {url}: {e}")
             return None
