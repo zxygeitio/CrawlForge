@@ -67,6 +67,9 @@ class CrawlerConfig:
     use_tls_bypass: bool = True
     use_stealth_browser: bool = True
 
+    # 日志配置
+    log_level: str = "INFO"
+
 
 class RequestMethod(Enum):
     """请求方法"""
