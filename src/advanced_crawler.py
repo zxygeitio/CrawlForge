@@ -236,6 +236,9 @@ class AdvancedCrawler:
         self._init_stealth_browser()
         self._session = requests.Session()
         self._async_session: Optional[AsyncSession] = None
+        # Playwright 浏览器复用
+        self._browser = None
+        self._context = None
 
     def _init_storage(self):
         if self.config.storage_type == "mongodb":
@@ -262,6 +265,19 @@ class AdvancedCrawler:
             stealth_config = StealthConfig(
                 headless=self.config.headless,
                 user_agent=self.config.user_agent,
+                # 启用所有增强反检测
+                randomize_webgl=True,
+                randomize_canvas=True,
+                fake_media_devices=True,
+                fake_battery=True,
+                fake_timezone=True,
+                bypass_wasm=True,
+                bypass_service_worker=True,
+                bypass_timing=True,
+                bypass_hardware=True,
+                bypass_connection=True,
+                bypass_speech=True,
+                bypass_gamepad=True,
             )
             self.stealth_browser = StealthBrowser(stealth_config)
         else:
@@ -308,22 +324,26 @@ class AdvancedCrawler:
 
     def _request_playwright(self, url: str, wait_until: str = "domcontentloaded",
                            js_code: str = None, hooks: list = None) -> Optional[Any]:
-        """Playwright请求"""
+        """Playwright请求（复用浏览器实例）"""
         if not self.stealth_browser:
             return None
 
-        browser = None
-        context = None
+        page = None
         try:
-            browser = self.stealth_browser.launch()
-            context = browser.new_context()
-            page = context.new_page()
+            # 复用浏览器实例，避免每次请求都启动/关闭浏览器（启动约1-2秒）
+            if self._browser is None:
+                self._browser = self.stealth_browser.launch()
 
-            # 安装Hook
+            # 复用 context，或创建新的（带完整反检测注入）
+            if self._context is None:
+                self._context = self.stealth_browser.create_context()
+
+            # create_page 应用所有反检测JS（STealth_JS_INJECT + 所有增强脚本）
+            page = self._context.new_page()
+
+            # 额外注入（可选hooks，叠加在create_page已注入的基础上）
             if hooks:
                 JSHookManager.install_hooks(page, hooks)
-            else:
-                page.evaluate(STealth_JS_INJECT)
 
             response = page.goto(url, wait_until=wait_until)
 
@@ -340,14 +360,11 @@ class AdvancedCrawler:
             logger.exception(f"Playwright Error for {url}: {e}")
             return None
         finally:
-            # 确保资源释放，即使发生异常也不例外
-            try:
-                if context:
-                    context.close()
-                if browser:
-                    browser.close()
-            except Exception as e:
-                logger.warning(f"Failed to close browser resources: {e}")
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
 
     async def _get_async_session(self) -> AsyncSession:
         """获取或创建异步Session（连接池复用）"""
@@ -579,6 +596,18 @@ class AdvancedCrawler:
         """关闭资源"""
         if hasattr(self, '_session') and self._session:
             self._session.close()
+        if self._context:
+            try:
+                self._context.close()
+            except Exception:
+                pass
+            self._context = None
+        if hasattr(self, '_browser') and self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
         if self.stealth_browser:
             self.stealth_browser.close()
         if hasattr(self.proxy_pool, 'stop_health_checker'):
