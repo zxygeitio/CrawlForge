@@ -799,34 +799,16 @@ class AdvancedCrawler:
         if hasattr(self, '_session') and self._session:
             self._session.close()
 
-        async def _async_close():
-            if self._context:
-                try:
-                    if self.config.cookie_persistence:
-                        try:
-                            cookies = await self._context.cookies()
-                            if cookies:
-                                self._save_cookies(cookies)
-                        except Exception as e:
-                            logger.warning(f"Failed to save cookies on close: {e}")
-                    await self._context.close()
-                except Exception:
-                    pass
-                self._context = None
-            if hasattr(self, '_browser') and self._browser:
-                try:
-                    await self._browser.close()
-                except Exception:
-                    pass
-                self._browser = None
-            if self.stealth_browser:
-                await self.stealth_browser.close()
+        # 注：_browser/_context 不再由 AdvancedCrawler 持有
+        # 每个 _request_playwright 调用内创建并在 finally 中关闭
+        # 这里不需要再关闭 stealth_browser（browser 已归还）
 
-        asyncio.run(_async_close())
-
-        # 关闭 UCP 浏览器（同步，不需要 asyncio）
+        # 关闭 UCP 浏览器
         if self._ucp_browser:
-            self._ucp_browser.close()
+            try:
+                self._ucp_browser.close()
+            except Exception as e:
+                logger.warning(f"UCP close error: {e}")
             self._ucp_browser = None
 
         if hasattr(self.proxy_pool, 'stop_health_checker'):
